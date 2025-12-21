@@ -1,0 +1,28 @@
+# Cursor Rules for QA-Craft
+
+## Coding Standards
+- **Backend:** - Use FastAPI with `async/await`.
+    - Use `SQLModel` for database entities and Pydantic validation.
+    - Follow the "Service-Repository" pattern: Keep business logic in `services/` and DB logic in `crud/`.
+- **Frontend:**
+    - Use Next.js App Router (TypeScript).
+    - Use `shadcn/ui` for all components (Card, Button, Textarea, Badge).
+    - Use Lucide-React for icons.
+- **AI/LLM:**
+    - Always use the `instructor` library for LLM calls to guarantee structured JSON output.
+    - Never accept raw string responses from the LLM for test cases.
+
+## Specific UI Requirements
+- Test cases should be rendered as a **Grid of Cards**.
+- **Accepted** cards should have a subtle green border.
+- **Rejected** cards should be semi-transparent or grayed out.
+- **Edge Cases** (where `is_edge_case` is true) should display a distinct "Edge Case" badge/tag.
+
+## Context Preservation
+- When generating the "Refinement Prompt," ensure the full context of the original requirements is preserved alongside the user's manual additions.
+- If the user adds a manual test case, ensure it is treated with the same priority as AI-generated ones during the refinement pass.
+
+## Naming Conventions
+- Database models: PascalCase (e.g., `FeatureModel`).
+- API routes: kebab-case (e.g., `/api/v1/generate-test-cases`).
+- React components: PascalCase.
