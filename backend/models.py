@@ -1,6 +1,6 @@
 """SQLModel models for QA-Craft."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 from sqlmodel import SQLModel, Field, Relationship
@@ -15,6 +15,27 @@ class TestCaseStatus(str, Enum):
     REJECTED = "rejected"
 
 
+class FeatureLinkType(str, Enum):
+    """Type of relationship between features."""
+    RELATES_TO = "relates_to"
+    DEPENDS_ON = "depends_on"
+    BLOCKS = "blocks"
+    PARENT_OF = "parent_of"
+    CHILD_OF = "child_of"
+    
+    @classmethod
+    def get_inverse(cls, link_type: "FeatureLinkType") -> "FeatureLinkType":
+        """Get the inverse link type for bidirectional relationships."""
+        inverse_map = {
+            cls.RELATES_TO: cls.RELATES_TO,  # Symmetric
+            cls.DEPENDS_ON: cls.BLOCKS,
+            cls.BLOCKS: cls.DEPENDS_ON,
+            cls.PARENT_OF: cls.CHILD_OF,
+            cls.CHILD_OF: cls.PARENT_OF,
+        }
+        return inverse_map[link_type]
+
+
 # ============== Feature Models ==============
 
 class FeatureBase(SQLModel):
@@ -27,7 +48,7 @@ class FeatureBase(SQLModel):
 class Feature(FeatureBase, table=True):
     """Feature database model."""
     id: Optional[int] = Field(default=None, primary_key=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     # Relationships
     test_cases: list["TestCase"] = Relationship(back_populates="feature")
@@ -49,6 +70,80 @@ class FeatureUpdate(SQLModel):
     title: Optional[str] = None
     description: Optional[str] = None
     raw_requirements: Optional[str] = None
+
+
+# ============== Feature Link Models ==============
+
+class FeatureLink(SQLModel, table=True):
+    """Link between two features with a typed relationship."""
+    __tablename__ = "feature_link"
+    
+    id: Optional[int] = Field(default=None, primary_key=True)
+    source_feature_id: int = Field(foreign_key="feature.id", index=True)
+    target_feature_id: int = Field(foreign_key="feature.id", index=True)
+    link_type: FeatureLinkType
+    notes: Optional[str] = Field(default=None, max_length=1000)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class FeatureLinkCreate(SQLModel):
+    """Schema for creating a feature link."""
+    target_feature_id: int
+    link_type: FeatureLinkType
+    notes: Optional[str] = None
+
+
+class FeatureLinkRead(SQLModel):
+    """Schema for reading a feature link."""
+    id: int
+    source_feature_id: int
+    target_feature_id: int
+    link_type: FeatureLinkType
+    notes: Optional[str]
+    created_at: datetime
+    # Include target feature info for display
+    target_feature_title: Optional[str] = None
+
+
+# ============== Test Case Link Models ==============
+
+class TestCaseLink(SQLModel, table=True):
+    """Link from a feature to a test case from another feature."""
+    __tablename__ = "test_case_link"
+    
+    id: Optional[int] = Field(default=None, primary_key=True)
+    feature_id: int = Field(foreign_key="feature.id", index=True)
+    test_case_id: int = Field(foreign_key="testcase.id", index=True)
+    notes: Optional[str] = Field(default=None, max_length=1000)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class TestCaseLinkCreate(SQLModel):
+    """Schema for creating a test case link."""
+    test_case_id: int
+    notes: Optional[str] = None
+
+
+class TestCaseLinkRead(SQLModel):
+    """Schema for reading a test case link."""
+    id: int
+    feature_id: int
+    test_case_id: int
+    notes: Optional[str]
+    created_at: datetime
+    # Include test case info for display
+    test_case_title: Optional[str] = None
+    test_case_feature_id: Optional[int] = None
+    test_case_feature_title: Optional[str] = None
+
+
+# ============== Combined Links Response ==============
+
+class FeatureLinksResponse(SQLModel):
+    """Response containing all links for a feature."""
+    feature_id: int
+    feature_links: list[FeatureLinkRead]
+    test_case_links: list[TestCaseLinkRead]
 
 
 # ============== Template Models ==============

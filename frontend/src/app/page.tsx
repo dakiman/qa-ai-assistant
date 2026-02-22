@@ -1,36 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { featureApi, templateApi, type Feature, type Template } from '@/lib/api';
+import { Plus, Box, LayoutTemplate, AlertTriangle } from 'lucide-react';
+import { useDashboardData } from '@/lib/queries';
 
 export default function Dashboard() {
-  const [features, setFeatures] = useState<Feature[]>([]);
-  const [templates, setTemplates] = useState<Template[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const [featuresData, templatesData] = await Promise.all([
-          featureApi.list(),
-          templateApi.list(),
-        ]);
-        setFeatures(featuresData);
-        setTemplates(templatesData);
-      } catch (err) {
-        setError('Failed to connect to API. Make sure the backend is running.');
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadData();
-  }, []);
+  const { features, templates, isLoading, error } = useDashboardData();
 
   return (
     <div className="space-y-8">
@@ -44,9 +22,7 @@ export default function Dashboard() {
         </div>
         <Link href="/features/new">
           <Button className="glow-teal">
-            <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
+            <Plus className="w-4 h-4 mr-2" />
             New Feature
           </Button>
         </Link>
@@ -57,10 +33,10 @@ export default function Dashboard() {
         <Card className="border-destructive/50 bg-destructive/10">
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <svg className="w-5 h-5 text-destructive" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-              <p className="text-sm text-destructive">{error}</p>
+              <AlertTriangle className="w-5 h-5 text-destructive" />
+              <p className="text-sm text-destructive">
+                Failed to connect to API. Make sure the backend is running.
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -72,7 +48,7 @@ export default function Dashboard() {
           <CardHeader className="pb-2">
             <CardDescription>Total Features</CardDescription>
             <CardTitle className="text-4xl font-bold text-primary">
-              {loading ? '—' : features.length}
+              {isLoading ? '—' : features.length}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -86,7 +62,7 @@ export default function Dashboard() {
           <CardHeader className="pb-2">
             <CardDescription>Templates Available</CardDescription>
             <CardTitle className="text-4xl font-bold text-primary">
-              {loading ? '—' : templates.length}
+              {isLoading ? '—' : templates.length}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -103,17 +79,13 @@ export default function Dashboard() {
           <CardContent className="space-y-2">
             <Link href="/features/new" className="block">
               <Button variant="secondary" className="w-full justify-start">
-                <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
+                <Plus className="w-4 h-4 mr-2" />
                 Create Feature
               </Button>
             </Link>
             <Link href="/templates" className="block">
               <Button variant="outline" className="w-full justify-start">
-                <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5z" />
-                </svg>
+                <LayoutTemplate className="w-4 h-4 mr-2" />
                 View Templates
               </Button>
             </Link>
@@ -124,7 +96,7 @@ export default function Dashboard() {
       {/* Recent Features */}
       <div>
         <h2 className="text-xl font-semibold mb-4">Recent Features</h2>
-        {loading ? (
+        {isLoading ? (
           <div className="grid gap-4 md:grid-cols-2">
             {[1, 2].map((i) => (
               <Card key={i} className="animate-pulse">
@@ -138,9 +110,7 @@ export default function Dashboard() {
         ) : features.length === 0 ? (
           <Card className="border-dashed">
             <CardContent className="flex flex-col items-center justify-center py-12">
-              <svg className="w-12 h-12 text-muted-foreground mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-              </svg>
+              <Box className="w-12 h-12 text-muted-foreground mb-4" />
               <p className="text-muted-foreground mb-4">No features created yet</p>
               <Link href="/features/new">
                 <Button>Create your first feature</Button>

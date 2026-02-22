@@ -1,0 +1,304 @@
+---
+description: API design rules for FastAPI backend
+globs: ["backend/routers/**/*.py", "backend/main.py"]
+alwaysApply: true
+---
+
+# API Design Rules
+
+## URL Conventions
+
+### ✅ Use kebab-case for URLs:
+```python
+# Correct
+router = APIRouter(prefix="/test-cases", tags=["Test Cases"])
+
+@router.get("/feature/{feature_id}/test-cases")
+@router.post("/bulk-status")
+```
+
+### ❌ NEVER use:
+```python
+# Wrong: snake_case
+@router.get("/test_cases")
+
+# Wrong: camelCase
+@router.get("/testCases")
+```
+
+---
+
+## HTTP Methods
+
+| Action | Method | URL Pattern | Example |
+|--------|--------|-------------|---------|
+| List | GET | `/resources` | `GET /features` |
+| Get one | GET | `/resources/{id}` | `GET /features/1` |
+| Create | POST | `/resources` | `POST /features` |
+| Full update | PUT | `/resources/{id}` | `PUT /features/1` |
+| Partial update | PATCH | `/resources/{id}` | `PATCH /features/1` |
+| Delete | DELETE | `/resources/{id}` | `DELETE /features/1` |
+| Action | POST | `/resources/{id}/action` | `POST /test-cases/1/accept` |
+
+---
+
+## Response Codes
+
+```python
+from fastapi import status
+
+# 200 OK - Successful GET, PATCH
+@router.get("/", response_model=list[FeatureRead])
+def list_features(): ...
+
+# 201 Created - Successful POST
+@router.post("/", response_model=FeatureRead, status_code=status.HTTP_201_CREATED)
+def create_feature(): ...
+
+# 204 No Content - Successful DELETE
+@router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_feature(): ...
+
+# 400 Bad Request - Invalid input
+raise HTTPException(status_code=400, detail="Invalid data")
+
+# 401 Unauthorized - Missing/invalid auth
+raise HTTPException(status_code=401, detail="Authentication required")
+
+# 403 Forbidden - Authenticated but not allowed
+raise HTTPException(status_code=403, detail="Not authorized")
+
+# 404 Not Found - Resource doesn't exist
+raise HTTPException(status_code=404, detail="Feature not found")
+
+# 422 Unprocessable Entity - Validation failed (automatic from Pydantic)
+
+# 429 Too Many Requests - Rate limited
+raise HTTPException(status_code=429, detail="Rate limit exceeded")
+
+# 500 Internal Server Error - Unexpected error (should be rare)
+```
+
+---
+
+## Route Handler Structure
+
+### ✅ Standard pattern:
+```python
+from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Sequence
+
+router = APIRouter(prefix="/features", tags=["Features"])
+
+@router.get("/", response_model=list[FeatureRead])
+def list_features(
+    skip: int = 0,
+    limit: int = 100,
+    repo: FeatureRepository = Depends(get_feature_repository)
+) -> Sequence[Feature]:
+    """
+    List all features with pagination.
+    
+    - **skip**: Number of items to skip (default: 0)
+    - **limit**: Maximum items to return (default: 100)
+    """
+    return repo.get_all(skip=skip, limit=limit)
+
+@router.get("/{feature_id}", response_model=FeatureRead)
+def get_feature(
+    feature_id: int,
+    repo: FeatureRepository = Depends(get_feature_repository)
+) -> Feature:
+    """Get a specific feature by ID."""
+    feature = repo.get(feature_id)
+    if not feature:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Feature with id {feature_id} not found"
+        )
+    return feature
+
+@router.post("/", response_model=FeatureRead, status_code=status.HTTP_201_CREATED)
+def create_feature(
+    feature: FeatureCreate,
+    repo: FeatureRepository = Depends(get_feature_repository)
+) -> Feature:
+    """Create a new feature."""
+    return repo.create(Feature.model_validate(feature))
+
+@router.patch("/{feature_id}", response_model=FeatureRead)
+def update_feature(
+    feature_id: int,
+    feature_update: FeatureUpdate,
+    repo: FeatureRepository = Depends(get_feature_repository)
+) -> Feature:
+    """Update a feature."""
+    feature = repo.get(feature_id)
+    if not feature:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Feature with id {feature_id} not found"
+        )
+    return repo.update(feature, feature_update)
+
+@router.delete("/{feature_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_feature(
+    feature_id: int,
+    repo: FeatureRepository = Depends(get_feature_repository)
+) -> None:
+    """Delete a feature."""
+    feature = repo.get(feature_id)
+    if not feature:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Feature with id {feature_id} not found"
+        )
+    repo.delete(feature)
+```
+
+---
+
+## Error Responses
+
+### ✅ Consistent error format:
+```python
+# Custom exception classes
+class QACraftError(Exception):
+    def __init__(self, message: str, status_code: int = 500):
+        self.message = message
+        self.status_code = status_code
+
+class ResourceNotFoundError(QACraftError):
+    def __init__(self, resource: str, id: int):
+        super().__init__(f"{resource} with id {id} not found", 404)
+
+# Exception handler
+@app.exception_handler(QACraftError)
+async def qa_craft_exception_handler(request: Request, exc: QACraftError):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.message}
+    )
+```
+
+### ✅ Error response schema:
+```json
+{
+  "detail": "Feature with id 123 not found"
+}
+```
+
+For validation errors (422):
+```json
+{
+  "detail": [
+    {
+      "loc": ["body", "title"],
+      "msg": "field required",
+      "type": "value_error.missing"
+    }
+  ]
+}
+```
+
+---
+
+## Pagination
+
+### ✅ Standard pagination pattern:
+```python
+@router.get("/", response_model=list[FeatureRead])
+def list_features(
+    skip: int = Query(default=0, ge=0, description="Items to skip"),
+    limit: int = Query(default=20, ge=1, le=100, description="Max items")
+) -> Sequence[Feature]:
+    ...
+```
+
+### For large datasets, use cursor-based pagination:
+```python
+@router.get("/", response_model=PaginatedResponse[FeatureRead])
+def list_features(
+    cursor: Optional[str] = None,
+    limit: int = Query(default=20, ge=1, le=100)
+):
+    # cursor is base64-encoded last ID
+    ...
+```
+
+---
+
+## Request Validation
+
+### ✅ Use Pydantic with Field constraints:
+```python
+from pydantic import Field
+
+class FeatureCreate(SQLModel):
+    title: str = Field(
+        min_length=1, 
+        max_length=255,
+        description="Feature title"
+    )
+    description: Optional[str] = Field(
+        default=None,
+        max_length=5000,
+        description="Optional description"
+    )
+    raw_requirements: str = Field(
+        min_length=10,
+        max_length=50000,
+        description="Raw requirements text"
+    )
+```
+
+---
+
+## API Versioning
+
+### ✅ URL prefix versioning:
+```python
+# config.py
+api_v1_prefix: str = "/api/v1"
+
+# main.py
+app.include_router(features.router, prefix=settings.api_v1_prefix)
+```
+
+---
+
+## Documentation
+
+### ✅ OpenAPI documentation:
+```python
+app = FastAPI(
+    title="QA-Craft API",
+    description="AI-Powered Test Management & Refinement Engine",
+    version="0.1.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json"
+)
+```
+
+### ✅ Endpoint documentation:
+```python
+@router.post(
+    "/",
+    response_model=GenerateResponse,
+    summary="Generate test cases",
+    description="""
+    Generate AI-powered test cases from feature requirements.
+    
+    The LLM analyzes the requirements and produces structured test cases
+    covering happy paths, edge cases, and error scenarios.
+    """,
+    responses={
+        200: {"description": "Test cases generated successfully"},
+        404: {"description": "Feature not found"},
+        503: {"description": "LLM service unavailable"}
+    }
+)
+def generate_test_cases(...):
+    ...
+```

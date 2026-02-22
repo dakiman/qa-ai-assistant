@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useState, useCallback, useMemo } from 'react';
+import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,72 +10,108 @@ import { Separator } from '@/components/ui/separator';
 import { TestCaseCard } from '@/components/TestCaseCard';
 import { AddTestCaseDialog } from '@/components/AddTestCaseDialog';
 import { RefineActionBar } from '@/components/RefineActionBar';
-import { 
-  featureApi, 
-  generateApi, 
-  type Feature, 
-  type TestCase,
-  type RefinementResponse 
-} from '@/lib/api';
+import { ExportButton } from '@/components/ExportButton';
+import { TestCaseFilters } from '@/components/TestCaseFilters';
+import { LinkManager } from '@/components/LinkManager';
+import { ChevronLeft, Pencil, Check, Plus, ClipboardCheck } from 'lucide-react';
+import { useFeatureDetail, useFeatureTestCases, queryKeys } from '@/lib/queries';
+import { useQueryClient } from '@tanstack/react-query';
+import type { TestCase, RefinementResponse, TestCaseFilters as Filters, TestCaseStatus } from '@/lib/api';
 
 export default function FeatureDetailPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const featureId = parseInt(params.id as string);
+  const queryClient = useQueryClient();
   
-  const [feature, setFeature] = useState<Feature | null>(null);
-  const [testCases, setTestCases] = useState<TestCase[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [refinementMessage, setRefinementMessage] = useState<string | null>(null);
 
-  const loadData = useCallback(async () => {
-    try {
-      const [featureData, testCasesData] = await Promise.all([
-        featureApi.get(featureId),
-        generateApi.getFeatureTestCases(featureId),
-      ]);
-      setFeature(featureData);
-      setTestCases(testCasesData);
-    } catch (err) {
-      setError('Failed to load feature');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, [featureId]);
+  // Parse filters from URL
+  const filters: Filters = useMemo(() => ({
+    status: (searchParams.get('status') as TestCaseStatus) || null,
+    is_edge_case: searchParams.get('edge') === 'true' ? true : null,
+    is_manual: searchParams.get('manual') === 'true' ? true : null,
+    search: searchParams.get('q') || null,
+  }), [searchParams]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  // Update URL when filters change
+  const setFilters = useCallback((newFilters: Filters) => {
+    const params = new URLSearchParams();
+    
+    if (newFilters.status) {
+      params.set('status', newFilters.status);
+    }
+    if (newFilters.is_edge_case) {
+      params.set('edge', 'true');
+    }
+    if (newFilters.is_manual) {
+      params.set('manual', 'true');
+    }
+    if (newFilters.search) {
+      params.set('q', newFilters.search);
+    }
+    
+    const queryString = params.toString();
+    router.replace(`/features/${featureId}${queryString ? `?${queryString}` : ''}`, { scroll: false });
+  }, [featureId, router]);
+
+  // Fetch with filters
+  const { feature, isLoading: featureLoading, error: featureError } = useFeatureDetail(featureId);
+  const { data: filteredTestCases = [], isLoading: testCasesLoading } = useFeatureTestCases(featureId, filters);
+  
+  // Also fetch unfiltered test cases for stats (only when filters are active)
+  const hasActiveFilters = !!(filters.status || filters.is_edge_case || filters.is_manual || filters.search);
+  const { data: allTestCases = [] } = useFeatureTestCases(featureId, undefined, {
+    enabled: hasActiveFilters,
+  });
+  
+  // Use filtered test cases for display, unfiltered for stats
+  const testCases = filteredTestCases;
+  const testCasesForStats = hasActiveFilters ? allTestCases : filteredTestCases;
+  const isLoading = featureLoading || testCasesLoading;
+  const error = featureError;
 
   const handleTestCaseStatusChange = (updatedCase: TestCase) => {
-    setTestCases(prev => 
-      prev.map(tc => tc.id === updatedCase.id ? updatedCase : tc)
+    // Optimistically update the cache
+    queryClient.setQueryData<TestCase[]>(
+      queryKeys.features.testCases(featureId),
+      (old) => old?.map(tc => tc.id === updatedCase.id ? updatedCase : tc) ?? []
     );
   };
 
-  const handleTestCaseAdded = (newCase: TestCase) => {
-    setTestCases(prev => [...prev, newCase]);
+  const handleTestCaseAdded = () => {
+    // Invalidate to refetch test cases
+    queryClient.invalidateQueries({ 
+      queryKey: queryKeys.features.testCases(featureId) 
+    });
   };
 
   const handleRefinementComplete = (response: RefinementResponse) => {
-    setTestCases(response.test_cases);
+    // Update the cache with refined test cases
+    queryClient.setQueryData(
+      queryKeys.features.testCases(featureId),
+      response.test_cases
+    );
     setRefinementMessage(response.message);
     // Clear message after 5 seconds
     setTimeout(() => setRefinementMessage(null), 5000);
   };
 
-  // Calculate stats
+  // Calculate stats from all test cases (not filtered)
   const stats = {
-    total: testCases.length,
-    draft: testCases.filter((tc) => tc.status === 'draft').length,
-    accepted: testCases.filter((tc) => tc.status === 'accepted').length,
-    rejected: testCases.filter((tc) => tc.status === 'rejected').length,
-    edgeCases: testCases.filter((tc) => tc.is_edge_case).length,
-    manual: testCases.filter((tc) => tc.is_manual).length,
+    total: testCasesForStats.length,
+    draft: testCasesForStats.filter((tc) => tc.status === 'draft').length,
+    accepted: testCasesForStats.filter((tc) => tc.status === 'accepted').length,
+    rejected: testCasesForStats.filter((tc) => tc.status === 'rejected').length,
+    edgeCases: testCasesForStats.filter((tc) => tc.is_edge_case).length,
+    manual: testCasesForStats.filter((tc) => tc.is_manual).length,
   };
+  
+  // Count of filtered results
+  const filteredCount = testCases.length;
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="space-y-8">
         <div className="animate-pulse">
@@ -99,7 +135,7 @@ export default function FeatureDetailPage() {
     return (
       <Card className="border-destructive/50 bg-destructive/10">
         <CardContent className="pt-6 text-center">
-          <p className="text-destructive mb-4">{error || 'Feature not found'}</p>
+          <p className="text-destructive mb-4">{error?.message || 'Feature not found'}</p>
           <Link href="/features">
             <Button variant="outline">Back to Features</Button>
           </Link>
@@ -115,9 +151,7 @@ export default function FeatureDetailPage() {
         <div>
           <div className="flex items-center gap-3 mb-2">
             <Link href="/features" className="text-muted-foreground hover:text-foreground transition-colors">
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
+              <ChevronLeft className="w-5 h-5" />
             </Link>
             <h1 className="text-3xl font-bold tracking-tight">{feature.title}</h1>
             <Badge variant="outline">#{feature.id}</Badge>
@@ -126,12 +160,13 @@ export default function FeatureDetailPage() {
             {feature.description || 'No description provided'}
           </p>
         </div>
-        <Button variant="outline" className="shrink-0">
-          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-          </svg>
-          Edit Feature
-        </Button>
+        <div className="flex items-center gap-3 shrink-0">
+          <ExportButton featureId={featureId} />
+          <Button variant="outline">
+            <Pencil className="w-4 h-4 mr-2" />
+            Edit Feature
+          </Button>
+        </div>
       </div>
 
       {/* Refinement Success Message */}
@@ -140,9 +175,7 @@ export default function FeatureDetailPage() {
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
               <div className="h-8 w-8 rounded-full bg-green-500/20 flex items-center justify-center">
-                <svg className="w-5 h-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
+                <Check className="w-5 h-5 text-green-400" />
               </div>
               <div>
                 <p className="font-medium text-green-400">Refinement Complete!</p>
@@ -193,17 +226,23 @@ export default function FeatureDetailPage() {
         </Card>
       </div>
 
-      {/* Requirements */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Requirements</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <pre className="whitespace-pre-wrap font-mono text-sm bg-muted/50 p-4 rounded-lg">
-            {feature.raw_requirements}
-          </pre>
-        </CardContent>
-      </Card>
+      {/* Requirements and Links */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Requirements */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Requirements</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <pre className="whitespace-pre-wrap font-mono text-sm bg-muted/50 p-4 rounded-lg max-h-64 overflow-auto">
+              {feature.raw_requirements}
+            </pre>
+          </CardContent>
+        </Card>
+
+        {/* Linked Context */}
+        <LinkManager featureId={featureId} />
+      </div>
 
       <Separator />
 
@@ -217,25 +256,45 @@ export default function FeatureDetailPage() {
           />
         </div>
 
-        {testCases.length === 0 ? (
+        {/* Filters */}
+        <TestCaseFilters
+          filters={filters}
+          onFiltersChange={setFilters}
+          className="mb-6"
+        />
+
+        {/* Filtered Results Count */}
+        {hasActiveFilters && (
+          <div className="text-sm text-muted-foreground mb-4">
+            Showing {filteredCount} of {stats.total} test cases
+          </div>
+        )}
+
+        {testCases.length === 0 && !hasActiveFilters ? (
           <Card className="border-dashed">
             <CardContent className="flex flex-col items-center justify-center py-12">
-              <svg className="w-12 h-12 text-muted-foreground mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-              </svg>
+              <ClipboardCheck className="w-12 h-12 text-muted-foreground mb-4" />
               <p className="text-muted-foreground mb-4">No test cases generated yet</p>
               <AddTestCaseDialog
                 featureId={featureId}
                 onTestCaseAdded={handleTestCaseAdded}
                 trigger={
                   <Button>
-                    <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
+                    <Plus className="w-4 h-4 mr-2" />
                     Add Manual Test Case
                   </Button>
                 }
               />
+            </CardContent>
+          </Card>
+        ) : testCases.length === 0 && hasActiveFilters ? (
+          <Card className="border-dashed">
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <ClipboardCheck className="w-12 h-12 text-muted-foreground mb-4" />
+              <p className="text-muted-foreground mb-4">No test cases match your filters</p>
+              <Button variant="outline" onClick={() => setFilters({})}>
+                Clear Filters
+              </Button>
             </CardContent>
           </Card>
         ) : (
@@ -251,10 +310,10 @@ export default function FeatureDetailPage() {
         )}
       </div>
 
-      {/* Floating Refine Action Bar */}
+      {/* Floating Refine Action Bar - use unfiltered test cases */}
       <RefineActionBar
         featureId={featureId}
-        testCases={testCases}
+        testCases={testCasesForStats}
         onRefinementComplete={handleRefinementComplete}
       />
     </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { Plus, ClipboardCheck, Loader2 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -14,23 +15,25 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { testCaseApi, type TestCase } from '@/lib/api';
+import { useCreateTestCase } from '@/lib/queries';
 
 interface AddTestCaseDialogProps {
   featureId: number;
-  onTestCaseAdded: (testCase: TestCase) => void;
+  onTestCaseAdded: () => void;
   trigger?: React.ReactNode;
 }
 
 export function AddTestCaseDialog({ featureId, onTestCaseAdded, trigger }: AddTestCaseDialogProps) {
   const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Form state
   const [title, setTitle] = useState('');
   const [stepsText, setStepsText] = useState('');
   const [expectedResult, setExpectedResult] = useState('');
+
+  // Mutation
+  const createMutation = useCreateTestCase();
 
   const resetForm = () => {
     setTitle('');
@@ -58,11 +61,10 @@ export function AddTestCaseDialog({ featureId, onTestCaseAdded, trigger }: AddTe
       return;
     }
 
-    setLoading(true);
     setError(null);
 
     try {
-      const newTestCase = await testCaseApi.create({
+      await createMutation.mutateAsync({
         feature_id: featureId,
         title: title.trim(),
         steps,
@@ -71,13 +73,11 @@ export function AddTestCaseDialog({ featureId, onTestCaseAdded, trigger }: AddTe
         is_manual: true,
       });
 
-      onTestCaseAdded(newTestCase);
+      onTestCaseAdded();
       resetForm();
       setOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create test case');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -86,9 +86,7 @@ export function AddTestCaseDialog({ featureId, onTestCaseAdded, trigger }: AddTe
       <DialogTrigger asChild>
         {trigger || (
           <Button variant="outline" size="sm">
-            <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
+            <Plus className="w-4 h-4 mr-2" />
             Add Manual Case
           </Button>
         )}
@@ -97,9 +95,7 @@ export function AddTestCaseDialog({ featureId, onTestCaseAdded, trigger }: AddTe
       <DialogContent className="sm:max-w-[525px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <svg className="w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-            </svg>
+            <ClipboardCheck className="w-5 h-5 text-blue-400" />
             Add Manual Test Case
           </DialogTitle>
           <DialogDescription>
@@ -121,7 +117,7 @@ export function AddTestCaseDialog({ featureId, onTestCaseAdded, trigger }: AddTe
               placeholder="e.g., Verify password reset email is sent"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              disabled={loading}
+              disabled={createMutation.isPending}
             />
           </div>
 
@@ -135,7 +131,7 @@ Click the "Reset Password" button
 Check the email inbox`}
               value={stepsText}
               onChange={(e) => setStepsText(e.target.value)}
-              disabled={loading}
+              disabled={createMutation.isPending}
               className="min-h-[120px] font-mono text-sm"
             />
             <p className="text-xs text-muted-foreground">
@@ -150,29 +146,24 @@ Check the email inbox`}
               placeholder="User receives a password reset email within 5 minutes containing a valid reset link"
               value={expectedResult}
               onChange={(e) => setExpectedResult(e.target.value)}
-              disabled={loading}
+              disabled={createMutation.isPending}
               className="min-h-[80px]"
             />
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={loading}>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={createMutation.isPending}>
               Cancel
             </Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? (
+            <Button type="submit" disabled={createMutation.isPending}>
+              {createMutation.isPending ? (
                 <>
-                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   Creating...
                 </>
               ) : (
                 <>
-                  <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
+                  <Plus className="w-4 h-4 mr-2" />
                   Add Test Case
                 </>
               )}
@@ -183,4 +174,3 @@ Check the email inbox`}
     </Dialog>
   );
 }
-

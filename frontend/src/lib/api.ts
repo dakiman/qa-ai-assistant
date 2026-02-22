@@ -1,88 +1,141 @@
 /**
  * API client for QA-Craft backend
+ * 
+ * Types are auto-generated from the backend OpenAPI spec.
+ * Run `npm run generate-types` to update types.
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+import type { components } from './api-types';
 
-// ============== Types ==============
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001/api/v1';
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
-export interface Feature {
-  id: number;
-  title: string;
-  description: string | null;
-  raw_requirements: string;
-  created_at: string;
+/**
+ * Get headers for API requests
+ */
+function getHeaders(includeContentType = false): HeadersInit {
+  const headers: HeadersInit = {};
+  
+  if (API_KEY) {
+    headers['X-API-Key'] = API_KEY;
+  }
+  
+  if (includeContentType) {
+    headers['Content-Type'] = 'application/json';
+  }
+  
+  return headers;
 }
 
-export interface FeatureCreate {
-  title: string;
-  description?: string;
-  raw_requirements: string;
-}
+// ============== Types (from OpenAPI) ==============
+// These types are derived from the auto-generated api-types.ts
 
-export interface Template {
-  id: number;
-  name: string;
-  system_instructions: string;
-}
+export type Feature = components['schemas']['FeatureRead'];
+export type FeatureCreate = components['schemas']['FeatureCreate'];
+export type FeatureUpdate = components['schemas']['FeatureUpdate'];
 
-export interface TestCaseDraft {
-  title: string;
-  steps: string[];
-  expected_result: string;
-  is_edge_case: boolean;
-  refinement_notes?: string | null;
-}
+export type Template = components['schemas']['TemplateRead'];
+export type TemplateCreate = components['schemas']['TemplateCreate'];
+export type TemplateUpdate = components['schemas']['TemplateUpdate'];
 
-export interface TestCase extends TestCaseDraft {
-  id: number;
+export type TestCase = components['schemas']['TestCaseRead'];
+export type TestCaseCreate = components['schemas']['TestCaseCreate'];
+export type TestCaseUpdate = components['schemas']['TestCaseUpdate'];
+export type TestCaseDraft = components['schemas']['TestCaseDraft'];
+export type TestCaseStatus = components['schemas']['TestCaseStatus'];
+
+/**
+ * Input type for creating a manual test case.
+ * Fields with backend defaults (is_edge_case, is_manual, status) are optional here
+ * as they're handled by the API client.
+ */
+export interface ManualTestCaseInput {
   feature_id: number;
-  is_manual: boolean;
-  status: 'draft' | 'accepted' | 'rejected';
-}
-
-export interface TestCaseCreate {
   title: string;
   steps: string[];
   expected_result: string;
   is_edge_case?: boolean;
   is_manual?: boolean;
+  refinement_notes?: string | null;
+}
+
+export type GenerateRequest = components['schemas']['GenerateRequest'];
+export type GenerateResponse = components['schemas']['GenerateResponse'];
+
+export type RefinementRequest = components['schemas']['RefinementRequest'];
+export type RefinementResponse = components['schemas']['RefinementResponse'];
+
+export type BulkStatusUpdate = components['schemas']['BulkStatusUpdate'];
+
+/**
+ * Filter parameters for test case listing.
+ */
+export interface TestCaseFilters {
+  status?: TestCaseStatus | null;
+  is_edge_case?: boolean | null;
+  is_manual?: boolean | null;
+  search?: string | null;
+}
+
+// ============== Link Types ==============
+
+export type FeatureLinkType = 
+  | 'relates_to'
+  | 'depends_on'
+  | 'blocks'
+  | 'parent_of'
+  | 'child_of';
+
+export interface FeatureLink {
+  id: number;
+  source_feature_id: number;
+  target_feature_id: number;
+  link_type: FeatureLinkType;
+  notes: string | null;
+  created_at: string;
+  target_feature_title: string | null;
+}
+
+export interface FeatureLinkCreate {
+  target_feature_id: number;
+  link_type: FeatureLinkType;
+  notes?: string | null;
+}
+
+export interface TestCaseLink {
+  id: number;
   feature_id: number;
+  test_case_id: number;
+  notes: string | null;
+  created_at: string;
+  test_case_title: string | null;
+  test_case_feature_id: number | null;
+  test_case_feature_title: string | null;
 }
 
-export interface TestCaseUpdate {
-  title?: string;
-  steps?: string[];
-  expected_result?: string;
-  is_edge_case?: boolean;
-  status?: 'draft' | 'accepted' | 'rejected';
+export interface TestCaseLinkCreate {
+  test_case_id: number;
+  notes?: string | null;
 }
 
-export interface GenerateRequest {
+export interface FeatureLinksResponse {
   feature_id: number;
-  template_id?: number;
+  feature_links: FeatureLink[];
+  test_case_links: TestCaseLink[];
 }
 
-export interface GenerateResponse {
-  feature_id: number;
-  test_cases: TestCaseDraft[];
-  message: string;
-}
+/**
+ * Human-readable display names for link types.
+ */
+export const LINK_TYPE_LABELS: Record<FeatureLinkType, string> = {
+  relates_to: 'Relates To',
+  depends_on: 'Depends On',
+  blocks: 'Blocks',
+  parent_of: 'Parent Of',
+  child_of: 'Child Of',
+};
 
-export interface RefinementRequest {
-  feature_id: number;
-  template_id?: number;
-}
-
-export interface RefinementResponse {
-  feature_id: number;
-  original_count: number;
-  new_count: number;
-  edge_cases_added: number;
-  test_cases: TestCase[];
-  message: string;
-}
-
+// Feature stats is not in the OpenAPI spec as a schema, define locally
 export interface FeatureStats {
   feature_id: number;
   total: number;
@@ -103,31 +156,56 @@ class APIError extends Error {
   }
 }
 
+// #region agent log
+function _dbgLog(location: string, message: string, data?: Record<string, unknown>) {
+  fetch('http://127.0.0.1:7242/ingest/c34574de-c7ef-4bd6-a6bf-37938fd4e65a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a8936c'},body:JSON.stringify({sessionId:'a8936c',location,message,data:data||{},timestamp:Date.now()})}).catch(()=>{});
+}
+// #endregion
+
 async function handleResponse<T>(response: Response): Promise<T> {
+  // #region agent log
+  _dbgLog('api.ts:handleResponse', 'Response received', {status: response.status, ok: response.ok, hypothesisId: 'D'});
+  // #endregion
+  
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
     throw new APIError(response.status, error.detail || 'Request failed');
   }
-  return response.json();
+  
+  // #region agent log
+  _dbgLog('api.ts:handleResponse', 'Before response.json()', {hypothesisId: 'D'});
+  // #endregion
+  
+  const result = await response.json();
+  
+  // #region agent log
+  _dbgLog('api.ts:handleResponse', 'After response.json()', {hasResult: !!result, hypothesisId: 'D'});
+  // #endregion
+  
+  return result;
 }
 
 // ============== Feature API ==============
 
 export const featureApi = {
   async list(): Promise<Feature[]> {
-    const response = await fetch(`${API_BASE_URL}/features/`);
+    const response = await fetch(`${API_BASE_URL}/features/`, {
+      headers: getHeaders(),
+    });
     return handleResponse<Feature[]>(response);
   },
 
   async get(id: number): Promise<Feature> {
-    const response = await fetch(`${API_BASE_URL}/features/${id}`);
+    const response = await fetch(`${API_BASE_URL}/features/${id}`, {
+      headers: getHeaders(),
+    });
     return handleResponse<Feature>(response);
   },
 
   async create(data: FeatureCreate): Promise<Feature> {
     const response = await fetch(`${API_BASE_URL}/features/`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders(true),
       body: JSON.stringify(data),
     });
     return handleResponse<Feature>(response);
@@ -136,7 +214,7 @@ export const featureApi = {
   async update(id: number, data: Partial<FeatureCreate>): Promise<Feature> {
     const response = await fetch(`${API_BASE_URL}/features/${id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders(true),
       body: JSON.stringify(data),
     });
     return handleResponse<Feature>(response);
@@ -145,6 +223,7 @@ export const featureApi = {
   async delete(id: number): Promise<void> {
     const response = await fetch(`${API_BASE_URL}/features/${id}`, {
       method: 'DELETE',
+      headers: getHeaders(),
     });
     if (!response.ok) {
       throw new APIError(response.status, 'Failed to delete feature');
@@ -152,7 +231,9 @@ export const featureApi = {
   },
 
   async getStats(id: number): Promise<FeatureStats> {
-    const response = await fetch(`${API_BASE_URL}/features/${id}/stats`);
+    const response = await fetch(`${API_BASE_URL}/features/${id}/stats`, {
+      headers: getHeaders(),
+    });
     return handleResponse<FeatureStats>(response);
   },
 };
@@ -161,13 +242,45 @@ export const featureApi = {
 
 export const templateApi = {
   async list(): Promise<Template[]> {
-    const response = await fetch(`${API_BASE_URL}/templates/`);
+    const response = await fetch(`${API_BASE_URL}/templates/`, {
+      headers: getHeaders(),
+    });
     return handleResponse<Template[]>(response);
   },
 
   async get(id: number): Promise<Template> {
-    const response = await fetch(`${API_BASE_URL}/templates/${id}`);
+    const response = await fetch(`${API_BASE_URL}/templates/${id}`, {
+      headers: getHeaders(),
+    });
     return handleResponse<Template>(response);
+  },
+
+  async create(data: TemplateCreate): Promise<Template> {
+    const response = await fetch(`${API_BASE_URL}/templates/`, {
+      method: 'POST',
+      headers: getHeaders(true),
+      body: JSON.stringify(data),
+    });
+    return handleResponse<Template>(response);
+  },
+
+  async update(id: number, data: TemplateUpdate): Promise<Template> {
+    const response = await fetch(`${API_BASE_URL}/templates/${id}`, {
+      method: 'PATCH',
+      headers: getHeaders(true),
+      body: JSON.stringify(data),
+    });
+    return handleResponse<Template>(response);
+  },
+
+  async delete(id: number): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/templates/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    });
+    if (!response.ok) {
+      throw new APIError(response.status, 'Failed to delete template');
+    }
   },
 };
 
@@ -175,16 +288,51 @@ export const templateApi = {
 
 export const generateApi = {
   async generateTestCases(data: GenerateRequest): Promise<GenerateResponse> {
+    // #region agent log
+    _dbgLog('api.ts:generateTestCases', 'START', {feature_id: data.feature_id, hypothesisId: 'D'});
+    // #endregion
+    
     const response = await fetch(`${API_BASE_URL}/generate/`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders(true),
       body: JSON.stringify(data),
     });
-    return handleResponse<GenerateResponse>(response);
+    
+    // #region agent log
+    _dbgLog('api.ts:generateTestCases', 'Fetch returned', {status: response.status, hypothesisId: 'D'});
+    // #endregion
+    
+    const result = await handleResponse<GenerateResponse>(response);
+    
+    // #region agent log
+    _dbgLog('api.ts:generateTestCases', 'END', {test_cases_count: result.test_cases?.length, hypothesisId: 'D'});
+    // #endregion
+    
+    return result;
   },
 
-  async getFeatureTestCases(featureId: number): Promise<TestCase[]> {
-    const response = await fetch(`${API_BASE_URL}/generate/feature/${featureId}/test-cases`);
+  async getFeatureTestCases(featureId: number, filters?: TestCaseFilters): Promise<TestCase[]> {
+    const params = new URLSearchParams();
+    
+    if (filters?.status) {
+      params.set('status', filters.status);
+    }
+    if (filters?.is_edge_case !== undefined && filters.is_edge_case !== null) {
+      params.set('is_edge_case', String(filters.is_edge_case));
+    }
+    if (filters?.is_manual !== undefined && filters.is_manual !== null) {
+      params.set('is_manual', String(filters.is_manual));
+    }
+    if (filters?.search) {
+      params.set('search', filters.search);
+    }
+    
+    const queryString = params.toString();
+    const url = `${API_BASE_URL}/generate/feature/${featureId}/test-cases${queryString ? `?${queryString}` : ''}`;
+    
+    const response = await fetch(url, {
+      headers: getHeaders(),
+    });
     return handleResponse<TestCase[]>(response);
   },
 };
@@ -192,13 +340,14 @@ export const generateApi = {
 // ============== Test Case API ==============
 
 export const testCaseApi = {
-  async create(data: TestCaseCreate): Promise<TestCase> {
+  async create(data: ManualTestCaseInput): Promise<TestCase> {
     const response = await fetch(`${API_BASE_URL}/test-cases/`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders(true),
       body: JSON.stringify({
         ...data,
         is_manual: true,
+        is_edge_case: data.is_edge_case ?? false,
         status: 'accepted', // Manual cases are auto-accepted
       }),
     });
@@ -206,14 +355,16 @@ export const testCaseApi = {
   },
 
   async get(id: number): Promise<TestCase> {
-    const response = await fetch(`${API_BASE_URL}/test-cases/${id}`);
+    const response = await fetch(`${API_BASE_URL}/test-cases/${id}`, {
+      headers: getHeaders(),
+    });
     return handleResponse<TestCase>(response);
   },
 
   async update(id: number, data: TestCaseUpdate): Promise<TestCase> {
     const response = await fetch(`${API_BASE_URL}/test-cases/${id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders(true),
       body: JSON.stringify(data),
     });
     return handleResponse<TestCase>(response);
@@ -222,6 +373,7 @@ export const testCaseApi = {
   async delete(id: number): Promise<void> {
     const response = await fetch(`${API_BASE_URL}/test-cases/${id}`, {
       method: 'DELETE',
+      headers: getHeaders(),
     });
     if (!response.ok) {
       throw new APIError(response.status, 'Failed to delete test case');
@@ -231,6 +383,7 @@ export const testCaseApi = {
   async accept(id: number): Promise<TestCase> {
     const response = await fetch(`${API_BASE_URL}/test-cases/${id}/accept`, {
       method: 'POST',
+      headers: getHeaders(),
     });
     return handleResponse<TestCase>(response);
   },
@@ -238,6 +391,7 @@ export const testCaseApi = {
   async reject(id: number): Promise<TestCase> {
     const response = await fetch(`${API_BASE_URL}/test-cases/${id}/reject`, {
       method: 'POST',
+      headers: getHeaders(),
     });
     return handleResponse<TestCase>(response);
   },
@@ -245,6 +399,7 @@ export const testCaseApi = {
   async reset(id: number): Promise<TestCase> {
     const response = await fetch(`${API_BASE_URL}/test-cases/${id}/reset`, {
       method: 'POST',
+      headers: getHeaders(),
     });
     return handleResponse<TestCase>(response);
   },
@@ -254,11 +409,90 @@ export const testCaseApi = {
 
 export const refineApi = {
   async refineTestSuite(data: RefinementRequest): Promise<RefinementResponse> {
+    // #region agent log
+    _dbgLog('api.ts:refineTestSuite', 'START', {feature_id: data.feature_id, hypothesisId: 'D'});
+    // #endregion
+    
     const response = await fetch(`${API_BASE_URL}/features/${data.feature_id}/refine`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders(true),
       body: JSON.stringify(data),
     });
-    return handleResponse<RefinementResponse>(response);
+    
+    // #region agent log
+    _dbgLog('api.ts:refineTestSuite', 'Fetch returned', {status: response.status, hypothesisId: 'D'});
+    // #endregion
+    
+    const result = await handleResponse<RefinementResponse>(response);
+    
+    // #region agent log
+    _dbgLog('api.ts:refineTestSuite', 'END', {test_cases_count: result.test_cases?.length, hypothesisId: 'D'});
+    // #endregion
+    
+    return result;
+  },
+};
+
+// ============== Links API ==============
+
+export const linksApi = {
+  /**
+   * Get all links for a feature (both feature links and test case links).
+   */
+  async getLinks(featureId: number): Promise<FeatureLinksResponse> {
+    const response = await fetch(`${API_BASE_URL}/features/${featureId}/links`, {
+      headers: getHeaders(),
+    });
+    return handleResponse<FeatureLinksResponse>(response);
+  },
+
+  /**
+   * Create a feature-to-feature link.
+   */
+  async createFeatureLink(featureId: number, data: FeatureLinkCreate): Promise<FeatureLink> {
+    const response = await fetch(`${API_BASE_URL}/features/${featureId}/links/feature`, {
+      method: 'POST',
+      headers: getHeaders(true),
+      body: JSON.stringify(data),
+    });
+    return handleResponse<FeatureLink>(response);
+  },
+
+  /**
+   * Delete a feature-to-feature link.
+   */
+  async deleteFeatureLink(featureId: number, linkId: number): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/features/${featureId}/links/feature/${linkId}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    });
+    if (!response.ok) {
+      throw new APIError(response.status, 'Failed to delete feature link');
+    }
+  },
+
+  /**
+   * Create a feature-to-test-case link.
+   */
+  async createTestCaseLink(featureId: number, data: TestCaseLinkCreate): Promise<TestCaseLink> {
+    const response = await fetch(`${API_BASE_URL}/features/${featureId}/links/test-case`, {
+      method: 'POST',
+      headers: getHeaders(true),
+      body: JSON.stringify(data),
+    });
+    return handleResponse<TestCaseLink>(response);
+  },
+
+  /**
+   * Delete a feature-to-test-case link.
+   */
+  async deleteTestCaseLink(featureId: number, linkId: number): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/features/${featureId}/links/test-case/${linkId}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    });
+    if (!response.ok) {
+      throw new APIError(response.status, 'Failed to delete test case link');
+    }
   },
 };

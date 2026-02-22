@@ -1,0 +1,285 @@
+---
+description: Rules for React/Next.js frontend development in QA-Craft
+globs: ["frontend/**/*.tsx", "frontend/**/*.ts"]
+alwaysApply: true
+---
+
+# Frontend React/TypeScript Rules
+
+## Icons
+
+### ❌ NEVER do this:
+```tsx
+// Inline SVG
+<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+</svg>
+```
+
+### ✅ ALWAYS do this:
+```tsx
+import { Plus, Check, X, Pencil, Home, Star, Loader2 } from 'lucide-react';
+
+<Plus className="w-4 h-4" />
+<Check className="w-4 h-4" />
+<Loader2 className="w-4 h-4 animate-spin" />
+```
+
+**Common icon mappings:**
+- Plus sign → `<Plus />`
+- Checkmark → `<Check />`
+- X/Close → `<X />`
+- Edit/Pencil → `<Pencil />`
+- Home → `<Home />`
+- Star → `<Star />`
+- Sparkle → `<Sparkles />`
+- Loading → `<Loader2 className="animate-spin" />`
+- Alert → `<AlertTriangle />`
+- Info → `<Info />`
+- Clipboard → `<ClipboardCheck />`
+- Arrow left → `<ChevronLeft />`
+- Arrow right → `<ChevronRight />`
+- Refresh → `<RefreshCw />`
+- Box/Package → `<Box />`
+- Template → `<LayoutTemplate />`
+
+---
+
+## State Management
+
+### ❌ NEVER do this:
+```tsx
+// Duplicating prop in local state
+function Card({ item }: { item: Item }) {
+  const [currentItem, setCurrentItem] = useState(item);
+  // Now state can drift from props!
+}
+```
+
+### ✅ ALWAYS do this:
+```tsx
+// Use prop directly, let parent manage state
+function Card({ item, onUpdate }: { item: Item; onUpdate: (item: Item) => void }) {
+  const handleAction = async () => {
+    const updated = await api.update(item.id);
+    onUpdate(updated);  // Parent updates state
+  };
+}
+```
+
+---
+
+## Data Fetching with React Query
+
+### ❌ NEVER do this:
+```tsx
+// Manual fetching with useEffect
+function Page() {
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  
+  useEffect(() => {
+    fetchData().then(setData).finally(() => setLoading(false));
+  }, []);
+}
+```
+
+### ✅ ALWAYS do this:
+```tsx
+// React Query hook
+import { useQuery } from '@tanstack/react-query';
+
+function Page() {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['items'],
+    queryFn: fetchItems,
+  });
+}
+
+// In lib/queries.ts
+export function useFeatures() {
+  return useQuery({
+    queryKey: ['features'],
+    queryFn: featureApi.list,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+```
+
+---
+
+## Error Boundaries
+
+### ✅ ALWAYS create error.tsx for route segments:
+```tsx
+// app/features/error.tsx
+'use client';
+
+import { useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { AlertTriangle } from 'lucide-react';
+
+export default function Error({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string };
+  reset: () => void;
+}) {
+  useEffect(() => {
+    console.error(error);
+  }, [error]);
+
+  return (
+    <div className="flex flex-col items-center justify-center py-12">
+      <AlertTriangle className="w-12 h-12 text-destructive mb-4" />
+      <h2 className="text-xl font-semibold mb-2">Something went wrong</h2>
+      <p className="text-muted-foreground mb-4">{error.message}</p>
+      <Button onClick={reset}>Try again</Button>
+    </div>
+  );
+}
+```
+
+---
+
+## TypeScript
+
+### ❌ NEVER do this:
+```tsx
+function handleClick(e: any) { ... }
+const data: any = await fetch(...);
+```
+
+### ✅ ALWAYS do this:
+```tsx
+function handleClick(e: React.MouseEvent<HTMLButtonElement>) { ... }
+
+interface ApiResponse {
+  id: number;
+  title: string;
+}
+const data: ApiResponse = await fetch(...).then(r => r.json());
+```
+
+---
+
+## Component Patterns
+
+### ✅ Component file structure:
+```tsx
+'use client';  // If needed
+
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Plus } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import type { Feature } from '@/lib/api';
+
+interface FeatureCardProps {
+  feature: Feature;
+  onSelect?: (id: number) => void;
+  className?: string;
+}
+
+export function FeatureCard({ feature, onSelect, className }: FeatureCardProps) {
+  const [loading, setLoading] = useState(false);
+
+  return (
+    <div className={cn("p-4 rounded-lg", className)}>
+      {/* Component content */}
+    </div>
+  );
+}
+```
+
+---
+
+## shadcn/ui Usage
+
+### ✅ ALWAYS use shadcn/ui components:
+```tsx
+// Correct imports
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogTrigger, DialogContent } from '@/components/ui/dialog';
+import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select';
+```
+
+### ❌ NEVER create custom primitives when shadcn/ui has them
+
+---
+
+## Loading States
+
+### ✅ ALWAYS show loading feedback:
+```tsx
+// Button loading state
+<Button disabled={loading}>
+  {loading ? (
+    <>
+      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+      Saving...
+    </>
+  ) : (
+    <>
+      <Save className="w-4 h-4 mr-2" />
+      Save
+    </>
+  )}
+</Button>
+
+// Page loading skeleton
+{isLoading ? (
+  <div className="animate-pulse">
+    <div className="h-8 w-1/3 bg-muted rounded mb-4" />
+    <div className="h-4 w-2/3 bg-muted rounded" />
+  </div>
+) : (
+  <Content />
+)}
+```
+
+---
+
+## API Types Sync
+
+### ✅ Use generated types from OpenAPI:
+```bash
+# Generate types
+npm run generate-types
+```
+
+```tsx
+// Import generated types
+import type { Feature, TestCase } from '@/lib/api-types';
+```
+
+---
+
+## Styling
+
+### ✅ Use Tailwind with cn() utility:
+```tsx
+import { cn } from '@/lib/utils';
+
+<div className={cn(
+  "base-classes",
+  isActive && "active-classes",
+  isDisabled && "opacity-50 cursor-not-allowed"
+)} />
+```
+
+### ✅ Status-based styling pattern:
+```tsx
+const statusClasses = {
+  draft: 'status-draft',
+  accepted: 'status-accepted ring-2 ring-green-500/50',
+  rejected: 'status-rejected opacity-50 grayscale',
+};
+
+<Card className={cn("card-hover", statusClasses[status])} />
+```

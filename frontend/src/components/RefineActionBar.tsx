@@ -1,10 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { refineApi, type TestCase, type RefinementResponse } from '@/lib/api';
+import { Sparkles } from 'lucide-react';
+import { useRefineTestSuite } from '@/lib/queries';
+import type { TestCase, RefinementResponse } from '@/lib/api';
+
+// #region agent log
+function _dbgLog(location: string, message: string, data?: Record<string, unknown>) {
+  fetch('http://127.0.0.1:7242/ingest/c34574de-c7ef-4bd6-a6bf-37938fd4e65a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a8936c'},body:JSON.stringify({sessionId:'a8936c',location,message,data:data||{},timestamp:Date.now()})}).catch(()=>{});
+}
+// #endregion
 
 interface RefineActionBarProps {
   featureId: number;
@@ -13,8 +21,21 @@ interface RefineActionBarProps {
 }
 
 export function RefineActionBar({ featureId, testCases, onRefinementComplete }: RefineActionBarProps) {
-  const [refining, setRefining] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Mutation
+  const refineMutation = useRefineTestSuite();
+  
+  // #region agent log
+  useEffect(() => {
+    _dbgLog('RefineActionBar', 'Mutation state changed', {
+      isPending: refineMutation.isPending,
+      isSuccess: refineMutation.isSuccess,
+      isError: refineMutation.isError,
+      hypothesisId: 'F'
+    });
+  }, [refineMutation.isPending, refineMutation.isSuccess, refineMutation.isError]);
+  // #endregion
 
   // Count cases ready for refinement (accepted + manual)
   const readyCount = testCases.filter(
@@ -24,38 +45,49 @@ export function RefineActionBar({ featureId, testCases, onRefinementComplete }: 
   const handleRefine = async () => {
     if (readyCount === 0) return;
 
-    setRefining(true);
     setError(null);
+    
+    // #region agent log
+    _dbgLog('RefineActionBar:handleRefine', 'START', {featureId, hypothesisId: 'F'});
+    // #endregion
 
     try {
-      const response = await refineApi.refineTestSuite({
+      const response = await refineMutation.mutateAsync({
         feature_id: featureId,
       });
+      
+      // #region agent log
+      _dbgLog('RefineActionBar:handleRefine', 'mutateAsync resolved', {testCasesCount: response.test_cases?.length, hypothesisId: 'F'});
+      // #endregion
+      
       onRefinementComplete(response);
+      
+      // #region agent log
+      _dbgLog('RefineActionBar:handleRefine', 'onRefinementComplete called', {hypothesisId: 'F'});
+      // #endregion
     } catch (err) {
+      // #region agent log
+      _dbgLog('RefineActionBar:handleRefine', 'ERROR', {error: String(err), hypothesisId: 'F'});
+      // #endregion
       setError(err instanceof Error ? err.message : 'Refinement failed');
-    } finally {
-      setRefining(false);
     }
   };
 
   // Don't show if no cases are ready
-  if (readyCount === 0 && !refining) {
+  if (readyCount === 0 && !refineMutation.isPending) {
     return null;
   }
 
   return (
     <>
       {/* Refining Overlay */}
-      {refining && (
+      {refineMutation.isPending && (
         <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center">
           <div className="text-center space-y-4">
             <div className="relative">
               <div className="w-20 h-20 rounded-full border-4 border-primary/30 border-t-primary animate-spin mx-auto" />
               <div className="absolute inset-0 flex items-center justify-center">
-                <svg className="w-8 h-8 text-primary" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                </svg>
+                <Sparkles className="w-8 h-8 text-primary" />
               </div>
             </div>
             <div>
@@ -97,16 +129,13 @@ export function RefineActionBar({ featureId, testCases, onRefinementComplete }: 
 
         <Button
           onClick={handleRefine}
-          disabled={refining || readyCount === 0}
+          disabled={refineMutation.isPending || readyCount === 0}
           className="glow-teal"
         >
-          <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-          </svg>
+          <Sparkles className="w-4 h-4 mr-2" />
           Refine Suite
         </Button>
       </div>
     </>
   );
 }
-

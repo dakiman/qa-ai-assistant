@@ -1,0 +1,24 @@
+Generic single-database configuration for QA-Craft.
+
+This directory contains Alembic migration scripts for managing the database schema.
+
+Commands:
+---------
+# Create a new migration (after modifying models.py):
+alembic revision --autogenerate -m "Description of changes"
+
+# Apply all pending migrations:
+alembic upgrade head
+
+# Rollback one migration:
+alembic downgrade -1
+
+# View current migration status:
+alembic current
+
+# View migration history:
+alembic history
+
+
+
+

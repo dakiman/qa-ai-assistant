@@ -1,28 +1,227 @@
 # Cursor Rules for QA-Craft
 
+## Project Overview
+QA-Craft is an AI-powered test case management system with:
+- **Backend:** FastAPI + SQLModel + Python 3.12+
+- **Frontend:** Next.js 16 + React 19 + TypeScript + shadcn/ui
+- **Database:** SQLite (dev) / PostgreSQL (prod)
+- **AI:** OpenAI/Anthropic via `instructor` library
+
+---
+
+## Architecture Patterns
+
+### Backend Architecture
+```
+backend/
+├── main.py              # App entry, lifespan, middleware
+├── config.py            # Pydantic Settings (env-based)
+├── database.py          # Engine, session management
+├── models.py            # SQLModel entities + Pydantic schemas
+├── exceptions.py        # Custom exception classes
+├── logging_config.py    # Structured logging setup
+├── auth.py              # Authentication dependencies
+├── repositories/        # Data access layer (CRUD)
+│   ├── base.py
+│   ├── feature_repository.py
+│   ├── test_case_repository.py
+│   └── template_repository.py
+├── services/            # Business logic layer
+│   └── llm_service.py
+├── routers/             # HTTP handlers only
+│   ├── features.py
+│   ├── test_cases.py
+│   ├── templates.py
+│   ├── generate.py
+│   └── refine.py
+└── tests/               # Pytest tests
+```
+
+### Frontend Architecture
+```
+frontend/src/
+├── app/                 # Next.js App Router pages
+├── components/          # React components
+│   ├── ui/              # shadcn/ui primitives
+│   └── [Feature]/       # Feature-specific components
+├── lib/                 # Utilities
+│   ├── api.ts           # API client
+│   ├── api-types.ts     # Generated from OpenAPI
+│   ├── queries.ts       # React Query hooks
+│   └── utils.ts
+└── providers/           # React context providers
+```
+
+---
+
 ## Coding Standards
-- **Backend:** - Use FastAPI with `async/await`.
-    - Use `SQLModel` for database entities and Pydantic validation.
-    - Follow the "Service-Repository" pattern: Keep business logic in `services/` and DB logic in `crud/`.
-- **Frontend:**
-    - Use Next.js App Router (TypeScript).
-    - Use `shadcn/ui` for all components (Card, Button, Textarea, Badge).
-    - Use Lucide-React for icons.
-- **AI/LLM:**
-    - Always use the `instructor` library for LLM calls to guarantee structured JSON output.
-    - Never accept raw string responses from the LLM for test cases.
 
-## Specific UI Requirements
-- Test cases should be rendered as a **Grid of Cards**.
-- **Accepted** cards should have a subtle green border.
-- **Rejected** cards should be semi-transparent or grayed out.
-- **Edge Cases** (where `is_edge_case` is true) should display a distinct "Edge Case" badge/tag.
+### Python/Backend Rules
 
-## Context Preservation
-- When generating the "Refinement Prompt," ensure the full context of the original requirements is preserved alongside the user's manual additions.
-- If the user adds a manual test case, ensure it is treated with the same priority as AI-generated ones during the refinement pass.
+1. **NEVER use `print()` for logging** - Use `logging` module with appropriate levels
+2. **NEVER use `datetime.utcnow()`** - Use `datetime.now(timezone.utc)` instead
+3. **NEVER use global mutable singletons** - Use FastAPI's `Depends()` with `@lru_cache`
+4. **NEVER use `next()` on generator dependencies** - Use proper context managers
+5. **ALWAYS use type hints** on all function signatures
+6. **ALWAYS use Pydantic models** for request/response validation
+7. **ALWAYS handle exceptions explicitly** - No bare `except:` clauses
+8. **ALWAYS use repository pattern** for database operations
+9. **ALWAYS write docstrings** for public functions and classes
+
+### TypeScript/Frontend Rules
+
+1. **NEVER use inline SVG** - Use Lucide-React icons: `import { IconName } from 'lucide-react'`
+2. **NEVER duplicate state** between parent and child components
+3. **NEVER use `any` type** - Use proper TypeScript types
+4. **ALWAYS use React Query** for data fetching and caching
+5. **ALWAYS implement Error Boundaries** for route segments
+6. **ALWAYS use shadcn/ui components** - Never create custom primitives
+7. **ALWAYS keep API types in sync** with backend (use OpenAPI generation)
+
+### Database Rules
+
+1. **NEVER use `create_all()` in production** - Use Alembic migrations
+2. **NEVER store JSON as string manually** - Use proper JSON column types
+3. **ALWAYS use foreign key constraints** with proper cascade behavior
+4. **ALWAYS add indexes** for frequently queried columns
+5. **ALWAYS use transactions** for multi-step operations
+
+### Security Rules
+
+1. **NEVER hardcode secrets** - Use environment variables via Pydantic Settings
+2. **NEVER expose internal errors** to clients - Use custom exception handlers
+3. **NEVER trust user input** - Validate everything with Pydantic
+4. **ALWAYS sanitize LLM prompts** - Escape or validate user content
+5. **ALWAYS use parameterized queries** (SQLModel handles this)
+6. **ALWAYS configure CORS** via environment variables
+7. **ALWAYS implement rate limiting** on expensive endpoints
+
+### Testing Rules
+
+1. **ALWAYS write tests** for new features
+2. **ALWAYS mock external services** (LLM, APIs)
+3. **ALWAYS use fixtures** for database setup
+4. **NEVER test implementation details** - Test behavior
+
+---
 
 ## Naming Conventions
-- Database models: PascalCase (e.g., `FeatureModel`).
-- API routes: kebab-case (e.g., `/api/v1/generate-test-cases`).
-- React components: PascalCase.
+
+| Element | Convention | Example |
+|---------|------------|---------|
+| Python files | snake_case | `llm_service.py` |
+| Python classes | PascalCase | `FeatureRepository` |
+| Python functions | snake_case | `get_feature_by_id` |
+| Python constants | SCREAMING_SNAKE | `MAX_RETRIES` |
+| TypeScript files | PascalCase (components), camelCase (utils) | `TestCaseCard.tsx`, `api.ts` |
+| React components | PascalCase | `RefineActionBar` |
+| React hooks | camelCase with `use` prefix | `useFeatures` |
+| API routes | kebab-case | `/api/v1/test-cases` |
+| Database tables | snake_case (singular) | `test_case` |
+| CSS classes | kebab-case | `card-hover` |
+
+---
+
+## Code Patterns
+
+### FastAPI Route Handler
+```python
+@router.get("/{id}", response_model=FeatureRead)
+def get_feature(
+    id: int,
+    repo: FeatureRepository = Depends(get_feature_repository)
+) -> Feature:
+    """Get a feature by ID."""
+    feature = repo.get(id)
+    if not feature:
+        raise ResourceNotFoundError("Feature", id)
+    return feature
+```
+
+### Repository Pattern
+```python
+class FeatureRepository(BaseRepository[Feature]):
+    def __init__(self, session: Session):
+        super().__init__(Feature, session)
+    
+    def get_with_test_cases(self, id: int) -> Optional[Feature]:
+        # Custom query with eager loading
+        ...
+```
+
+### React Query Hook
+```typescript
+export function useFeature(id: number) {
+  return useQuery({
+    queryKey: ['features', id],
+    queryFn: () => featureApi.get(id),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+}
+```
+
+### Error Handling
+```python
+# Backend
+try:
+    result = await llm_service.generate(...)
+except LLMServiceError as e:
+    logger.error("LLM generation failed", exc_info=True)
+    raise HTTPException(status_code=503, detail="AI service temporarily unavailable")
+```
+
+```typescript
+// Frontend
+<ErrorBoundary fallback={<ErrorCard onRetry={reset} />}>
+  <FeatureDetail />
+</ErrorBoundary>
+```
+
+---
+
+## UI/UX Requirements
+
+### Test Case Cards
+- Render as a **Grid of Cards** (2 columns on desktop)
+- **Draft** status: Blue border/badge
+- **Accepted** status: Green ring/border
+- **Rejected** status: Semi-transparent, grayscale
+- **Edge Cases**: Amber "Edge Case" badge with sparkle icon
+- **Manual Cases**: Blue left border + "Manual" badge
+
+### Loading States
+- Use skeleton loaders matching final layout
+- Show loading spinner in buttons during async actions
+- Never block UI without feedback
+
+### Error States
+- Display errors in Card with destructive styling
+- Always provide retry action when possible
+- Log errors to console for debugging
+
+---
+
+## Dependencies
+
+### Backend (requirements.txt)
+- Pin major versions only for flexibility
+- Always include test dependencies
+- Keep instructor, openai, anthropic up to date for API compatibility
+
+### Frontend (package.json)
+- Use exact versions for Next.js and React
+- Keep shadcn/ui components updated
+- Use React Query for all data fetching
+
+---
+
+## Pre-Commit Checklist
+
+Before committing any code:
+1. [ ] No `print()` statements in Python
+2. [ ] No inline SVGs in React components
+3. [ ] All functions have type hints
+4. [ ] Error cases are handled
+5. [ ] No hardcoded secrets or URLs
+6. [ ] Tests pass locally
+7. [ ] Linting passes (`npm run lint`, `ruff check`)

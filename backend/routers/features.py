@@ -1,51 +1,53 @@
 """Feature CRUD endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlmodel import Session, select
+from fastapi import APIRouter, Depends, status
 from typing import Sequence
 
-from database import get_session
+from auth import verify_api_key, verify_api_key_optional
+from exceptions import ResourceNotFoundError
 from models import (
     Feature, 
     FeatureCreate, 
     FeatureRead, 
     FeatureUpdate
 )
+from repositories.feature_repository import FeatureRepository, get_feature_repository
 
 router = APIRouter(prefix="/features", tags=["Features"])
 
 
 @router.post("/", response_model=FeatureRead, status_code=status.HTTP_201_CREATED)
-def create_feature(feature: FeatureCreate, session: Session = Depends(get_session)):
+def create_feature(
+    feature: FeatureCreate, 
+    repo: FeatureRepository = Depends(get_feature_repository),
+    _: str = Depends(verify_api_key)
+) -> Feature:
     """Create a new feature."""
     db_feature = Feature.model_validate(feature)
-    session.add(db_feature)
-    session.commit()
-    session.refresh(db_feature)
-    return db_feature
+    return repo.create(db_feature)
 
 
 @router.get("/", response_model=list[FeatureRead])
 def list_features(
     skip: int = 0, 
     limit: int = 100, 
-    session: Session = Depends(get_session)
+    repo: FeatureRepository = Depends(get_feature_repository),
+    _: str | None = Depends(verify_api_key_optional)
 ) -> Sequence[Feature]:
     """List all features with pagination."""
-    statement = select(Feature).offset(skip).limit(limit)
-    features = session.exec(statement).all()
-    return features
+    return repo.get_all(skip=skip, limit=limit)
 
 
 @router.get("/{feature_id}", response_model=FeatureRead)
-def get_feature(feature_id: int, session: Session = Depends(get_session)):
+def get_feature(
+    feature_id: int, 
+    repo: FeatureRepository = Depends(get_feature_repository),
+    _: str | None = Depends(verify_api_key_optional)
+) -> Feature:
     """Get a specific feature by ID."""
-    feature = session.get(Feature, feature_id)
+    feature = repo.get(feature_id)
     if not feature:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Feature with id {feature_id} not found"
-        )
+        raise ResourceNotFoundError("Feature", feature_id)
     return feature
 
 
@@ -53,37 +55,24 @@ def get_feature(feature_id: int, session: Session = Depends(get_session)):
 def update_feature(
     feature_id: int, 
     feature_update: FeatureUpdate, 
-    session: Session = Depends(get_session)
-):
+    repo: FeatureRepository = Depends(get_feature_repository),
+    _: str = Depends(verify_api_key)
+) -> Feature:
     """Update a feature."""
-    feature = session.get(Feature, feature_id)
+    feature = repo.get(feature_id)
     if not feature:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Feature with id {feature_id} not found"
-        )
-    
-    feature_data = feature_update.model_dump(exclude_unset=True)
-    for key, value in feature_data.items():
-        setattr(feature, key, value)
-    
-    session.add(feature)
-    session.commit()
-    session.refresh(feature)
-    return feature
+        raise ResourceNotFoundError("Feature", feature_id)
+    return repo.update(feature, feature_update)
 
 
 @router.delete("/{feature_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_feature(feature_id: int, session: Session = Depends(get_session)):
+def delete_feature(
+    feature_id: int, 
+    repo: FeatureRepository = Depends(get_feature_repository),
+    _: str = Depends(verify_api_key)
+) -> None:
     """Delete a feature."""
-    feature = session.get(Feature, feature_id)
+    feature = repo.get(feature_id)
     if not feature:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Feature with id {feature_id} not found"
-        )
-    session.delete(feature)
-    session.commit()
-    return None
-
-
+        raise ResourceNotFoundError("Feature", feature_id)
+    repo.delete(feature)

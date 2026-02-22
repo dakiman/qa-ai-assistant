@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { QueryProvider } from "@/providers/QueryProvider";
 
 export const metadata: Metadata = {
   title: "QA-Craft | AI-Powered Test Management",
@@ -15,9 +16,11 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className="antialiased">
-        <DashboardLayout>
-          {children}
-        </DashboardLayout>
+        <QueryProvider>
+          <DashboardLayout>
+            {children}
+          </DashboardLayout>
+        </QueryProvider>
       </body>
     </html>
   );

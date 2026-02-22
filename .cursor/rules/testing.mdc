@@ -1,0 +1,292 @@
+---
+description: Testing rules and patterns for QA-Craft
+globs: ["**/test_*.py", "**/tests/**/*.py", "**/*.test.ts", "**/*.test.tsx"]
+alwaysApply: false
+---
+
+# Testing Rules
+
+## Backend Testing (pytest)
+
+### Test File Structure
+```
+backend/tests/
+├── conftest.py          # Shared fixtures
+├── test_features.py     # Feature CRUD tests
+├── test_test_cases.py   # Test case CRUD tests
+├── test_generation.py   # LLM generation tests
+├── test_refinement.py   # Refinement tests
+└── test_auth.py         # Authentication tests
+```
+
+### Required Fixtures (conftest.py)
+```python
+import pytest
+from fastapi.testclient import TestClient
+from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel.pool import StaticPool
+
+from main import app
+from database import get_session
+from services.llm_service import get_llm_service, LLMService
+
+@pytest.fixture(name="engine")
+def engine_fixture():
+    """Create in-memory test database."""
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    SQLModel.metadata.create_all(engine)
+    return engine
+
+@pytest.fixture(name="session")
+def session_fixture(engine):
+    """Provide test database session."""
+    with Session(engine) as session:
+        yield session
+
+@pytest.fixture(name="client")
+def client_fixture(session):
+    """Test client with overridden dependencies."""
+    def get_session_override():
+        return session
+    
+    app.dependency_overrides[get_session] = get_session_override
+    client = TestClient(app)
+    yield client
+    app.dependency_overrides.clear()
+
+@pytest.fixture
+def mock_llm_service():
+    """Mock LLM service for testing."""
+    class MockLLMService(LLMService):
+        def generate_initial_test_cases(self, requirements, template_content=None):
+            return [
+                TestCaseDraft(
+                    title="Mock Test Case",
+                    steps=["Step 1", "Step 2"],
+                    expected_result="Expected result",
+                    is_edge_case=False
+                )
+            ]
+    
+    return MockLLMService()
+```
+
+### Test Patterns
+
+#### CRUD Tests
+```python
+def test_create_feature(client: TestClient):
+    """Test feature creation."""
+    response = client.post("/api/v1/features/", json={
+        "title": "Test Feature",
+        "raw_requirements": "Test requirements"
+    })
+    assert response.status_code == 201
+    data = response.json()
+    assert data["title"] == "Test Feature"
+    assert "id" in data
+
+def test_get_feature_not_found(client: TestClient):
+    """Test 404 for non-existent feature."""
+    response = client.get("/api/v1/features/99999")
+    assert response.status_code == 404
+    assert "not found" in response.json()["detail"].lower()
+
+def test_list_features_pagination(client: TestClient, session: Session):
+    """Test feature list pagination."""
+    # Create 15 features
+    for i in range(15):
+        session.add(Feature(title=f"Feature {i}", raw_requirements="req"))
+    session.commit()
+    
+    # Test pagination
+    response = client.get("/api/v1/features/?skip=0&limit=10")
+    assert len(response.json()) == 10
+    
+    response = client.get("/api/v1/features/?skip=10&limit=10")
+    assert len(response.json()) == 5
+```
+
+#### Service Tests with Mocks
+```python
+def test_generate_with_mock_llm(client: TestClient, mock_llm_service, session):
+    """Test generation with mocked LLM."""
+    # Override LLM service
+    app.dependency_overrides[get_llm_service] = lambda: mock_llm_service
+    
+    # Create feature first
+    feature = Feature(title="Test", raw_requirements="Requirements")
+    session.add(feature)
+    session.commit()
+    
+    # Generate test cases
+    response = client.post("/api/v1/generate/", json={
+        "feature_id": feature.id
+    })
+    
+    assert response.status_code == 200
+    assert len(response.json()["test_cases"]) > 0
+    
+    app.dependency_overrides.clear()
+```
+
+#### Error Handling Tests
+```python
+def test_invalid_input_returns_422(client: TestClient):
+    """Test validation error response."""
+    response = client.post("/api/v1/features/", json={
+        # Missing required field 'raw_requirements'
+        "title": "Test"
+    })
+    assert response.status_code == 422
+
+def test_duplicate_template_name(client: TestClient, session: Session):
+    """Test unique constraint on template name."""
+    session.add(Template(name="Existing", system_instructions="..."))
+    session.commit()
+    
+    response = client.post("/api/v1/templates/", json={
+        "name": "Existing",
+        "system_instructions": "New instructions"
+    })
+    assert response.status_code == 400
+    assert "already exists" in response.json()["detail"]
+```
+
+---
+
+## Frontend Testing (Jest + React Testing Library)
+
+### Test File Structure
+```
+frontend/
+├── __tests__/
+│   ├── components/
+│   │   ├── TestCaseCard.test.tsx
+│   │   └── AddTestCaseDialog.test.tsx
+│   └── pages/
+│       └── features.test.tsx
+└── jest.config.js
+```
+
+### Component Tests
+```typescript
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { TestCaseCard } from '@/components/TestCaseCard';
+
+const mockTestCase = {
+  id: 1,
+  title: 'Test Case Title',
+  steps: ['Step 1', 'Step 2'],
+  expected_result: 'Expected result',
+  status: 'draft' as const,
+  is_edge_case: false,
+  is_manual: false,
+  feature_id: 1,
+};
+
+describe('TestCaseCard', () => {
+  it('renders test case title', () => {
+    render(<TestCaseCard testCase={mockTestCase} />);
+    expect(screen.getByText('Test Case Title')).toBeInTheDocument();
+  });
+
+  it('shows accept and reject buttons for draft status', () => {
+    render(<TestCaseCard testCase={mockTestCase} />);
+    expect(screen.getByText('Accept')).toBeInTheDocument();
+    expect(screen.getByText('Reject')).toBeInTheDocument();
+  });
+
+  it('calls onStatusChange when accepting', async () => {
+    const onStatusChange = jest.fn();
+    render(
+      <TestCaseCard 
+        testCase={mockTestCase} 
+        onStatusChange={onStatusChange} 
+      />
+    );
+    
+    fireEvent.click(screen.getByText('Accept'));
+    
+    await waitFor(() => {
+      expect(onStatusChange).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'accepted' })
+      );
+    });
+  });
+
+  it('shows edge case badge when is_edge_case is true', () => {
+    render(
+      <TestCaseCard 
+        testCase={{ ...mockTestCase, is_edge_case: true }} 
+      />
+    );
+    expect(screen.getByText('Edge')).toBeInTheDocument();
+  });
+});
+```
+
+### API Mocking
+```typescript
+import { rest } from 'msw';
+import { setupServer } from 'msw/node';
+
+const server = setupServer(
+  rest.get('/api/v1/features', (req, res, ctx) => {
+    return res(ctx.json([
+      { id: 1, title: 'Feature 1', raw_requirements: 'req' }
+    ]));
+  }),
+  rest.post('/api/v1/test-cases/:id/accept', (req, res, ctx) => {
+    return res(ctx.json({
+      ...mockTestCase,
+      status: 'accepted'
+    }));
+  })
+);
+
+beforeAll(() => server.listen());
+afterEach(() => server.resetHandlers());
+afterAll(() => server.close());
+```
+
+---
+
+## Testing Guidelines
+
+### DO:
+- ✅ Test public behavior, not implementation details
+- ✅ Use descriptive test names that explain the scenario
+- ✅ Keep tests independent (no shared state)
+- ✅ Mock external services (LLM, APIs)
+- ✅ Test error cases and edge cases
+- ✅ Use factories/fixtures for test data
+
+### DON'T:
+- ❌ Test private methods directly
+- ❌ Assert on implementation details (internal state)
+- ❌ Share mutable state between tests
+- ❌ Make real API calls in unit tests
+- ❌ Write tests that depend on execution order
+- ❌ Over-mock (if you mock everything, you're testing nothing)
+
+---
+
+## Coverage Requirements
+
+Minimum coverage targets:
+- **Backend:** 70% overall, 90% for services/
+- **Frontend:** 60% overall, 80% for critical components
+
+Run coverage:
+```bash
+# Backend
+pytest --cov=. --cov-report=term-missing
+
+# Frontend
+npm test -- --coverage
+```

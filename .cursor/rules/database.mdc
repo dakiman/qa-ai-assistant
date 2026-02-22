@@ -1,0 +1,279 @@
+---
+description: Database and SQLModel rules for QA-Craft
+globs: ["backend/models.py", "backend/database.py", "backend/repositories/**/*.py", "backend/alembic/**/*.py"]
+alwaysApply: true
+---
+
+# Database Rules
+
+## Migrations
+
+### ❌ NEVER do this in production:
+```python
+# Direct table creation bypasses migrations
+SQLModel.metadata.create_all(engine)
+```
+
+### ✅ ALWAYS use Alembic migrations:
+```bash
+# Create new migration
+alembic revision --autogenerate -m "Add column to feature"
+
+# Apply migrations
+alembic upgrade head
+
+# Rollback
+alembic downgrade -1
+```
+
+---
+
+## Model Definitions
+
+### ✅ Correct SQLModel patterns:
+```python
+from datetime import datetime, timezone
+from typing import Optional
+from sqlmodel import SQLModel, Field, Relationship
+
+class FeatureBase(SQLModel):
+    """Base model with shared fields."""
+    title: str = Field(index=True, max_length=255)
+    description: Optional[str] = Field(default=None, max_length=5000)
+    raw_requirements: str
+
+class Feature(FeatureBase, table=True):
+    """Database table model."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
+    
+    # Relationships
+    test_cases: list["TestCase"] = Relationship(
+        back_populates="feature",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
+
+class FeatureCreate(FeatureBase):
+    """Request schema for creation."""
+    pass
+
+class FeatureRead(FeatureBase):
+    """Response schema."""
+    id: int
+    created_at: datetime
+
+class FeatureUpdate(SQLModel):
+    """Partial update schema."""
+    title: Optional[str] = None
+    description: Optional[str] = None
+    raw_requirements: Optional[str] = None
+```
+
+---
+
+## JSON Fields
+
+### ❌ NEVER do this:
+```python
+# Manual JSON serialization
+steps: str = Field(default="[]")  # JSON as string
+
+@property
+def steps_list(self) -> list[str]:
+    return json.loads(self.steps)
+```
+
+### ✅ ALWAYS do this:
+```python
+from sqlalchemy import Column, JSON
+
+class TestCase(SQLModel, table=True):
+    # Native JSON column (works with SQLite JSON1)
+    steps: list[str] = Field(default=[], sa_column=Column(JSON))
+```
+
+---
+
+## Relationships
+
+### ✅ Define relationships with cascade:
+```python
+class Feature(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    
+    # One-to-many with cascade delete
+    test_cases: list["TestCase"] = Relationship(
+        back_populates="feature",
+        sa_relationship_kwargs={
+            "cascade": "all, delete-orphan",
+            "lazy": "selectin"  # Eager load by default
+        }
+    )
+
+class TestCase(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    feature_id: int = Field(foreign_key="feature.id", index=True)
+    
+    # Back reference
+    feature: Optional["Feature"] = Relationship(back_populates="test_cases")
+```
+
+---
+
+## Indexes
+
+### ✅ Add indexes for frequently queried columns:
+```python
+class TestCase(SQLModel, table=True):
+    # Primary key (auto-indexed)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    
+    # Foreign key (should be indexed)
+    feature_id: int = Field(foreign_key="feature.id", index=True)
+    
+    # Frequently filtered columns
+    status: str = Field(default="draft", index=True)
+    is_edge_case: bool = Field(default=False, index=True)
+```
+
+---
+
+## Session Management
+
+### ✅ Correct session patterns:
+```python
+# database.py
+from sqlmodel import create_engine, Session
+from contextlib import contextmanager
+
+engine = create_engine(
+    settings.database_url,
+    echo=settings.db_echo,
+    connect_args={"check_same_thread": False} if "sqlite" in settings.database_url else {}
+)
+
+def get_session():
+    """Dependency for getting database sessions."""
+    with Session(engine) as session:
+        yield session
+
+@contextmanager
+def get_session_context():
+    """Context manager for non-dependency usage."""
+    with Session(engine) as session:
+        try:
+            yield session
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+```
+
+### ✅ Usage in startup/scripts:
+```python
+# Correct: Use context manager
+from database import get_session_context
+
+def seed_templates():
+    with get_session_context() as session:
+        # ... seeding logic
+        session.add(template)
+        # commit handled by context manager
+```
+
+---
+
+## Queries
+
+### ✅ Use SQLModel select statements:
+```python
+from sqlmodel import select
+
+# Simple query
+def get_feature(session: Session, id: int) -> Optional[Feature]:
+    return session.get(Feature, id)
+
+# Query with filter
+def get_features_by_status(session: Session, status: str) -> list[Feature]:
+    statement = select(Feature).where(Feature.status == status)
+    return session.exec(statement).all()
+
+# Query with join (eager loading)
+def get_feature_with_cases(session: Session, id: int) -> Optional[Feature]:
+    statement = (
+        select(Feature)
+        .where(Feature.id == id)
+        .options(selectinload(Feature.test_cases))
+    )
+    return session.exec(statement).first()
+
+# Pagination
+def list_features(session: Session, skip: int = 0, limit: int = 100) -> list[Feature]:
+    statement = select(Feature).offset(skip).limit(limit)
+    return session.exec(statement).all()
+```
+
+---
+
+## Transactions
+
+### ✅ Use transactions for multi-step operations:
+```python
+def transfer_test_cases(
+    session: Session,
+    source_feature_id: int,
+    target_feature_id: int
+) -> None:
+    """Move test cases between features atomically."""
+    try:
+        # Get source test cases
+        source = session.get(Feature, source_feature_id)
+        if not source:
+            raise ResourceNotFoundError("Feature", source_feature_id)
+        
+        # Update all test cases
+        for tc in source.test_cases:
+            tc.feature_id = target_feature_id
+            session.add(tc)
+        
+        # Commit transaction
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+```
+
+---
+
+## Environment-Specific Configuration
+
+```python
+# config.py
+class Settings(BaseSettings):
+    # Database
+    database_url: str = "sqlite:///./qa_craft.db"
+    db_echo: bool = False  # SQL logging
+    db_pool_size: int = 5
+    db_max_overflow: int = 10
+    
+    class Config:
+        env_file = ".env"
+
+# database.py
+def create_db_engine():
+    settings = get_settings()
+    
+    connect_args = {}
+    if "sqlite" in settings.database_url:
+        connect_args["check_same_thread"] = False
+    
+    return create_engine(
+        settings.database_url,
+        echo=settings.db_echo,
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+        connect_args=connect_args
+    )
+```

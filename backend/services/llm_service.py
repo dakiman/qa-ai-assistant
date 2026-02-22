@@ -1,15 +1,56 @@
 """LLM Service for generating and refining test cases using instructor library."""
 
 import instructor
-from openai import OpenAI
-from anthropic import Anthropic
+from openai import OpenAI, OpenAIError
+from anthropic import Anthropic, APIError as AnthropicAPIError
 from pydantic import BaseModel
 from typing import Optional
-import json
-import random
 
 from config import get_settings
-from models import TestCaseDraft, TestCaseRead
+from exceptions import LLMServiceError, LLMConfigurationError
+from logging_config import get_logger
+from models import TestCaseDraft, TestCaseRead, FeatureLinkType
+
+logger = get_logger(__name__)
+
+
+# Maximum characters for linked context to prevent prompt overflow
+MAX_LINKED_REQUIREMENTS_CHARS = 2000
+MAX_LINKED_TEST_CASE_CHARS = 1500
+
+
+def sanitize_for_prompt(text: str, max_length: int = 10000) -> str:
+    """
+    Sanitize user input before including in LLM prompts.
+    
+    Protections:
+    - Truncate to prevent token overflow
+    - Escape markdown code blocks
+    - Log potential prompt injection attempts
+    """
+    if not text:
+        return ""
+    
+    # Truncate
+    text = text[:max_length]
+    
+    # Escape code blocks that might confuse the LLM
+    text = text.replace("```", "'''")
+    
+    # Log potential prompt injection attempts
+    injection_markers = [
+        "ignore previous instructions",
+        "disregard above",
+        "new instructions:",
+        "system:",
+        "assistant:",
+    ]
+    text_lower = text.lower()
+    for marker in injection_markers:
+        if marker in text_lower:
+            logger.warning("Potential prompt injection detected: %s", marker)
+    
+    return text.strip()
 
 
 class TestCaseList(BaseModel):
@@ -59,7 +100,8 @@ class LLMService:
     def generate_initial_test_cases(
         self,
         requirements: str,
-        template_content: Optional[str] = None
+        template_content: Optional[str] = None,
+        linked_context: Optional[str] = None
     ) -> list[TestCaseDraft]:
         """
         Generate initial test cases from requirements using LLM.
@@ -67,22 +109,44 @@ class LLMService:
         Args:
             requirements: Raw requirements text to analyze
             template_content: Optional template with system instructions
+            linked_context: Optional formatted context from linked features/test cases
             
         Returns:
             List of TestCaseDraft objects
         """
+        logger.info("Generating test cases (provider: %s)", self.provider)
+        logger.debug("Requirements length: %d characters", len(requirements))
+        if linked_context:
+            logger.debug("Including linked context: %d characters", len(linked_context))
+        
         # Use mock if no API key or explicitly set to mock
         if self.provider == "mock" or self.client is None:
+            logger.info("Using mock test case generation")
             return self._generate_mock_test_cases(requirements)
         
         # Build the system prompt
         system_prompt = template_content or self._get_default_system_prompt()
         
-        # Build the user prompt
-        user_prompt = f"""Analyze the following requirements and generate comprehensive test cases.
+        # Sanitize user inputs
+        sanitized_requirements = sanitize_for_prompt(requirements)
+        sanitized_context = sanitize_for_prompt(linked_context) if linked_context else ""
+        
+        # Build the user prompt with optional linked context
+        context_section = ""
+        if sanitized_context:
+            context_section = f"""
+{sanitized_context}
+
+Use the above related context to inform your test case generation, but focus primarily on the requirements below.
+
+---
+
+"""
+        
+        user_prompt = f"""{context_section}Analyze the following requirements and generate comprehensive test cases.
 
 Requirements:
-{requirements}
+{sanitized_requirements}
 
 Generate test cases that cover:
 1. Happy path scenarios (normal expected usage)
@@ -99,7 +163,7 @@ Mark edge cases with is_edge_case=True."""
         try:
             if self.provider == "openai":
                 response = self.client.chat.completions.create(
-                    model="gpt-4-turbo-preview",
+                    model=self.settings.openai_model,
                     response_model=TestCaseList,
                     messages=[
                         {"role": "system", "content": system_prompt},
@@ -108,26 +172,36 @@ Mark edge cases with is_edge_case=True."""
                 )
             elif self.provider == "anthropic":
                 response = self.client.messages.create(
-                    model="claude-3-sonnet-20240229",
+                    model=self.settings.anthropic_model,
                     max_tokens=4096,
                     response_model=TestCaseList,
                     messages=[
                         {"role": "user", "content": f"{system_prompt}\n\n{user_prompt}"}
                     ]
                 )
+            else:
+                # Should not reach here since we check for mock above
+                raise LLMConfigurationError(f"Unknown LLM provider: {self.provider}")
             
+            logger.info("Generated %d test cases via LLM", len(response.test_cases))
             return response.test_cases
             
+        except (OpenAIError, AnthropicAPIError) as e:
+            logger.error("LLM API error during test case generation: %s", e, exc_info=True)
+            raise LLMServiceError(f"LLM API error: {type(e).__name__}") from e
+        except instructor.exceptions.InstructorRetryException as e:
+            logger.error("LLM failed to produce valid response structure: %s", e, exc_info=True)
+            raise LLMServiceError("AI failed to generate valid test case structure") from e
         except Exception as e:
-            print(f"LLM API error: {e}")
-            # Fallback to mock on error
-            return self._generate_mock_test_cases(requirements)
+            logger.error("Unexpected error during test case generation: %s", e, exc_info=True)
+            raise LLMServiceError("Unexpected error during test case generation") from e
 
     def refine_test_suite(
         self,
         requirements: str,
         accepted_cases: list[TestCaseRead],
-        template_content: Optional[str] = None
+        template_content: Optional[str] = None,
+        linked_context: Optional[str] = None
     ) -> list[TestCaseDraft]:
         """
         Refine an existing test suite by finding gaps and adding edge cases.
@@ -136,16 +210,39 @@ Mark edge cases with is_edge_case=True."""
             requirements: Original requirements text
             accepted_cases: List of accepted/manual test cases
             template_content: Optional template for styling consistency
+            linked_context: Optional formatted context from linked features/test cases
             
         Returns:
             List of new TestCaseDraft objects to add (edge cases and gap fillers)
         """
+        logger.info("Refining test suite (provider: %s, existing cases: %d)", 
+                    self.provider, len(accepted_cases))
+        if linked_context:
+            logger.debug("Including linked context: %d characters", len(linked_context))
+        
         # Use mock if no API key or explicitly set to mock
         if self.provider == "mock" or self.client is None:
+            logger.info("Using mock refinement generation")
             return self._generate_mock_refinements(requirements, accepted_cases)
         
         # Format existing cases for the prompt
         existing_cases_text = self._format_existing_cases(accepted_cases)
+        
+        # Sanitize user inputs
+        sanitized_requirements = sanitize_for_prompt(requirements)
+        sanitized_context = sanitize_for_prompt(linked_context) if linked_context else ""
+        
+        # Build linked context section if available
+        context_section = ""
+        if sanitized_context:
+            context_section = f"""
+{sanitized_context}
+
+Consider the above related context when identifying gaps, but focus primarily on the requirements below.
+
+---
+
+"""
         
         # Build the refinement system prompt
         system_prompt = """You are a Senior QA Lead specializing in test suite completeness and edge case discovery.
@@ -170,8 +267,8 @@ You must perform three critical tasks:
 
 ONLY generate NEW test cases that are NOT already covered. Mark all new cases as edge cases (is_edge_case=true) and include a refinement_notes field explaining why this case is important."""
 
-        user_prompt = f"""## Original Requirements:
-{requirements}
+        user_prompt = f"""{context_section}## Original Requirements:
+{sanitized_requirements}
 
 ## Currently Accepted Test Cases:
 {existing_cases_text}
@@ -186,7 +283,7 @@ For each new test case:
         try:
             if self.provider == "openai":
                 response = self.client.chat.completions.create(
-                    model="gpt-4-turbo-preview",
+                    model=self.settings.openai_model,
                     response_model=TestCaseList,
                     messages=[
                         {"role": "system", "content": system_prompt},
@@ -195,19 +292,29 @@ For each new test case:
                 )
             elif self.provider == "anthropic":
                 response = self.client.messages.create(
-                    model="claude-3-sonnet-20240229",
+                    model=self.settings.anthropic_model,
                     max_tokens=4096,
                     response_model=TestCaseList,
                     messages=[
                         {"role": "user", "content": f"{system_prompt}\n\n{user_prompt}"}
                     ]
                 )
+            else:
+                # Should not reach here since we check for mock above
+                raise LLMConfigurationError(f"Unknown LLM provider: {self.provider}")
             
+            logger.info("Generated %d refinement cases via LLM", len(response.test_cases))
             return response.test_cases
             
+        except (OpenAIError, AnthropicAPIError) as e:
+            logger.error("LLM API error during test suite refinement: %s", e, exc_info=True)
+            raise LLMServiceError(f"LLM API error: {type(e).__name__}") from e
+        except instructor.exceptions.InstructorRetryException as e:
+            logger.error("LLM failed to produce valid response for refinement: %s", e, exc_info=True)
+            raise LLMServiceError("AI failed to generate valid refinement structure") from e
         except Exception as e:
-            print(f"LLM API error during refinement: {e}")
-            return self._generate_mock_refinements(requirements, accepted_cases)
+            logger.error("Unexpected error during test suite refinement: %s", e, exc_info=True)
+            raise LLMServiceError("Unexpected error during test suite refinement") from e
 
     def _format_existing_cases(self, cases: list[TestCaseRead]) -> str:
         """Format existing test cases for the refinement prompt."""
@@ -237,6 +344,80 @@ Your goal is to analyze requirements and generate well-structured test cases tha
 - Are clear, actionable, and reproducible
 
 Always structure your response as a list of test cases with clear titles, steps, and expected results."""
+
+    def format_linked_context(
+        self,
+        linked_features: list | None = None,
+        linked_test_cases: list | None = None
+    ) -> str:
+        """
+        Format linked features and test cases as context for LLM prompts.
+        
+        Args:
+            linked_features: List of LinkedFeatureContext objects
+            linked_test_cases: List of LinkedTestCaseContext objects
+            
+        Returns:
+            Formatted string to append to prompts, or empty string if no context
+        """
+        if not linked_features and not linked_test_cases:
+            return ""
+        
+        sections = []
+        
+        # Format linked features
+        if linked_features:
+            feature_parts = ["## Related Features Context\n"]
+            feature_parts.append("The following features are related and may provide useful context:\n")
+            
+            for lf in linked_features:
+                link_type_display = self._get_link_type_display(lf.link_type)
+                requirements = lf.raw_requirements
+                
+                # Truncate if too long
+                if len(requirements) > MAX_LINKED_REQUIREMENTS_CHARS:
+                    requirements = requirements[:MAX_LINKED_REQUIREMENTS_CHARS] + "... [truncated]"
+                
+                feature_parts.append(f"### {lf.title} ({link_type_display})")
+                if lf.notes:
+                    feature_parts.append(f"*Relationship notes: {lf.notes}*")
+                feature_parts.append(f"```\n{requirements}\n```\n")
+            
+            sections.append("\n".join(feature_parts))
+        
+        # Format linked test cases
+        if linked_test_cases:
+            tc_parts = ["## Referenced Test Cases\n"]
+            tc_parts.append("The following test cases from other features may be relevant:\n")
+            
+            for ltc in linked_test_cases:
+                steps_text = "\n".join(f"   {i}. {step}" for i, step in enumerate(ltc.steps, 1))
+                
+                # Truncate if too long
+                if len(steps_text) > MAX_LINKED_TEST_CASE_CHARS:
+                    steps_text = steps_text[:MAX_LINKED_TEST_CASE_CHARS] + "\n   ... [truncated]"
+                
+                tc_parts.append(f"### {ltc.title}")
+                tc_parts.append(f"*From feature: {ltc.feature_title}*")
+                if ltc.notes:
+                    tc_parts.append(f"*Notes: {ltc.notes}*")
+                tc_parts.append(f"**Steps:**\n{steps_text}")
+                tc_parts.append(f"**Expected Result:** {ltc.expected_result}\n")
+            
+            sections.append("\n".join(tc_parts))
+        
+        return "\n\n".join(sections)
+    
+    def _get_link_type_display(self, link_type: FeatureLinkType) -> str:
+        """Get a human-readable display name for a link type."""
+        display_map = {
+            FeatureLinkType.RELATES_TO: "relates to",
+            FeatureLinkType.DEPENDS_ON: "depends on",
+            FeatureLinkType.BLOCKS: "blocks",
+            FeatureLinkType.PARENT_OF: "parent of",
+            FeatureLinkType.CHILD_OF: "child of",
+        }
+        return display_map.get(link_type, link_type.value)
 
     def _generate_mock_test_cases(self, requirements: str) -> list[TestCaseDraft]:
         """Generate mock test cases for development without API key."""
@@ -483,13 +664,11 @@ Always structure your response as a list of test cases with clear titles, steps,
         return refinements
 
 
-# Singleton instance
-_llm_service: Optional[LLMService] = None
+from functools import lru_cache
 
 
+@lru_cache
 def get_llm_service() -> LLMService:
-    """Get or create the LLM service singleton."""
-    global _llm_service
-    if _llm_service is None:
-        _llm_service = LLMService()
-    return _llm_service
+    """Get cached LLM service instance."""
+    logger.debug("Initializing LLM service with provider: %s", get_settings().llm_provider)
+    return LLMService()

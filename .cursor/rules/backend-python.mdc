@@ -1,0 +1,260 @@
+---
+description: Rules for Python backend development in QA-Craft
+globs: ["backend/**/*.py"]
+alwaysApply: true
+---
+
+# Backend Python Rules
+
+## Session Management
+
+### ❌ NEVER do this:
+```python
+# Anti-pattern: Manual generator consumption
+session = next(get_session())
+result = session.exec(query)
+# Session never closed!
+```
+
+### ✅ ALWAYS do this:
+```python
+# Correct: Use context manager or dependency injection
+def my_endpoint(session: Session = Depends(get_session)):
+    result = session.exec(query)
+    return result
+```
+
+---
+
+## Logging
+
+### ❌ NEVER do this:
+```python
+print("Something happened")
+print(f"Error: {e}")
+```
+
+### ✅ ALWAYS do this:
+```python
+import logging
+logger = logging.getLogger(__name__)
+
+logger.info("Something happened")
+logger.error("Error occurred", exc_info=True)
+logger.debug("Debug info: %s", variable)
+```
+
+---
+
+## DateTime Handling
+
+### ❌ NEVER do this:
+```python
+from datetime import datetime
+created_at = datetime.utcnow()  # Deprecated in Python 3.12+
+```
+
+### ✅ ALWAYS do this:
+```python
+from datetime import datetime, timezone
+created_at = datetime.now(timezone.utc)
+
+# In SQLModel fields:
+created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+```
+
+---
+
+## Dependency Injection
+
+### ❌ NEVER do this:
+```python
+# Global mutable singleton
+_service: Optional[MyService] = None
+
+def get_service() -> MyService:
+    global _service
+    if _service is None:
+        _service = MyService()
+    return _service
+```
+
+### ✅ ALWAYS do this:
+```python
+from functools import lru_cache
+
+@lru_cache
+def get_service() -> MyService:
+    """Cached service instance."""
+    return MyService()
+
+# In routes:
+def my_endpoint(service: MyService = Depends(get_service)):
+    ...
+```
+
+---
+
+## Error Handling
+
+### ❌ NEVER do this:
+```python
+try:
+    result = risky_operation()
+except Exception as e:
+    print(f"Error: {e}")
+    return default_value  # Silent failure!
+```
+
+### ✅ ALWAYS do this:
+```python
+from exceptions import ServiceError
+
+try:
+    result = risky_operation()
+except SpecificError as e:
+    logger.error("Operation failed: %s", e, exc_info=True)
+    raise ServiceError("Operation failed") from e
+```
+
+---
+
+## Repository Pattern
+
+### ❌ NEVER do this:
+```python
+# CRUD in router
+@router.post("/")
+def create_item(item: ItemCreate, session: Session = Depends(get_session)):
+    db_item = Item.model_validate(item)
+    session.add(db_item)
+    session.commit()
+    session.refresh(db_item)
+    return db_item
+```
+
+### ✅ ALWAYS do this:
+```python
+# Router delegates to repository
+@router.post("/", response_model=ItemRead)
+def create_item(
+    item: ItemCreate,
+    repo: ItemRepository = Depends(get_item_repository)
+) -> Item:
+    return repo.create(Item.model_validate(item))
+```
+
+---
+
+## Configuration
+
+### ❌ NEVER do this:
+```python
+API_KEY = "sk-1234567890"  # Hardcoded secret!
+DATABASE_URL = "sqlite:///./prod.db"  # Hardcoded path
+```
+
+### ✅ ALWAYS do this:
+```python
+from pydantic_settings import BaseSettings
+
+class Settings(BaseSettings):
+    api_key: str  # Required from environment
+    database_url: str = "sqlite:///./dev.db"  # Default for dev only
+    
+    class Config:
+        env_file = ".env"
+```
+
+---
+
+## Type Hints
+
+### ❌ NEVER do this:
+```python
+def process_data(data):
+    return data["value"]
+```
+
+### ✅ ALWAYS do this:
+```python
+from typing import Any
+
+def process_data(data: dict[str, Any]) -> str:
+    return data["value"]
+```
+
+---
+
+## Async/Sync Consistency
+
+This project uses **synchronous** database operations with SQLModel.
+
+### ❌ NEVER do this:
+```python
+# Mixing async/sync
+@router.get("/")
+async def get_items(session: Session = Depends(get_session)):
+    # This blocks the event loop!
+    items = session.exec(select(Item)).all()
+    return items
+```
+
+### ✅ ALWAYS do this:
+```python
+# Stay synchronous
+@router.get("/")
+def get_items(session: Session = Depends(get_session)):
+    items = session.exec(select(Item)).all()
+    return items
+```
+
+---
+
+## Testing
+
+### ✅ Required test patterns:
+```python
+# tests/conftest.py
+@pytest.fixture
+def session():
+    """In-memory test database."""
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as session:
+        yield session
+
+@pytest.fixture
+def client(session):
+    """Test client with overridden dependencies."""
+    app.dependency_overrides[get_session] = lambda: session
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+```
+
+---
+
+## LLM Integration
+
+### ❌ NEVER do this:
+```python
+# Raw user input in prompt
+prompt = f"Analyze: {user_requirements}"
+response = client.chat(prompt)
+```
+
+### ✅ ALWAYS do this:
+```python
+# Structured response with instructor
+from instructor import from_openai
+
+client = from_openai(OpenAI())
+response = client.chat.completions.create(
+    model="gpt-4-turbo-preview",
+    response_model=TestCaseList,  # Guaranteed structure
+    messages=[
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": sanitize_input(requirements)}
+    ]
+)
+```
