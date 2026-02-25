@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4-turbo-preview"
     anthropic_model: str = "claude-3-sonnet-20240229"
     
+    # Validation (pre-LLM requirements quality gate)
+    validation_enabled: bool = True
+    validation_min_words: int = 5
+    validation_min_chars: int = 30
+    openai_validation_model: str = "gpt-4o-mini"
+    anthropic_validation_model: str = "claude-3-haiku-20240307"
+    
     # API Settings
     api_v1_prefix: str = "/api/v1"
     

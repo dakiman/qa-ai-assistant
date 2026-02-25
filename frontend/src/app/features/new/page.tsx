@@ -15,19 +15,38 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Pencil, AlertTriangle, Zap, Loader2, Eye, Lightbulb } from 'lucide-react';
+import {
+  Pencil,
+  AlertTriangle,
+  Zap,
+  Loader2,
+  Eye,
+  Lightbulb,
+  Link2,
+  CheckCircle2,
+  SkipForward,
+} from 'lucide-react';
 import { useTemplates, useCreateFeature, useGenerateTestCases } from '@/lib/queries';
 import type { TestCaseDraft } from '@/lib/api';
+import { ValidationAPIError } from '@/lib/api';
+import { LinkManager } from '@/components/LinkManager';
+
+type Phase = 'form' | 'linking' | 'generated';
 
 export default function NewFeaturePage() {
   const router = useRouter();
   const { data: templates = [] } = useTemplates();
-  
-  // Mutations
+
   const createFeatureMutation = useCreateFeature();
   const generateTestCasesMutation = useGenerateTestCases();
-  
-  const [error, setError] = useState<string | null>(null);
+
+  const [phase, setPhase] = useState<Phase>('form');
+  const [error, setError] = useState<
+    | { kind: 'simple'; message: string }
+    | { kind: 'validation'; issues: string[]; suggestions: string[] }
+    | null
+  >(null);
+  const [skipLlmValidation, setSkipLlmValidation] = useState(false);
   const [generatedCases, setGeneratedCases] = useState<TestCaseDraft[]>([]);
   const [createdFeatureId, setCreatedFeatureId] = useState<number | null>(null);
 
@@ -37,36 +56,66 @@ export default function NewFeaturePage() {
   const [requirements, setRequirements] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
 
-  const isLoading = createFeatureMutation.isPending || generateTestCasesMutation.isPending;
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Phase 1: create feature only (no generation yet)
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !requirements.trim()) {
-      setError('Title and requirements are required');
+      setError({ kind: 'simple', message: 'Title and requirements are required' });
       return;
     }
 
     setError(null);
 
     try {
-      // Create the feature
       const feature = await createFeatureMutation.mutateAsync({
         title: title.trim(),
         description: description.trim() || undefined,
         raw_requirements: requirements.trim(),
+        skip_llm_validation: skipLlmValidation,
       });
 
       setCreatedFeatureId(feature.id);
+      setPhase('linking');
+    } catch (err) {
+      if (err instanceof ValidationAPIError) {
+        setError({ kind: 'validation', issues: err.issues, suggestions: err.suggestions });
+      } else {
+        setSkipLlmValidation(false);
+        setError({
+          kind: 'simple',
+          message: err instanceof Error ? err.message : 'Failed to create feature',
+        });
+      }
+    }
+  };
 
-      // Generate test cases
+  // Phase 2: generate test cases (with any linked context already saved)
+  const handleGenerate = async () => {
+    if (!createdFeatureId) return;
+
+    setError(null);
+    // Capture and reset the bypass flag so it doesn't silently carry to future attempts
+    const bypassLlm = skipLlmValidation;
+    setSkipLlmValidation(false);
+
+    try {
       const response = await generateTestCasesMutation.mutateAsync({
-        feature_id: feature.id,
+        feature_id: createdFeatureId,
         template_id: selectedTemplateId ? parseInt(selectedTemplateId) : undefined,
+        skip_llm_validation: bypassLlm,
       });
 
       setGeneratedCases(response.test_cases);
+      setPhase('generated');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create feature');
+      if (err instanceof ValidationAPIError) {
+        setError({ kind: 'validation', issues: err.issues, suggestions: err.suggestions });
+      } else {
+        setError({
+          kind: 'simple',
+          message: err instanceof Error ? err.message : 'Failed to generate test cases',
+        });
+      }
     }
   };
 
@@ -82,7 +131,9 @@ export default function NewFeaturePage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Create New Feature</h1>
         <p className="text-muted-foreground mt-1">
-          Paste your requirements and let AI generate comprehensive test cases.
+          {phase === 'form' && 'Paste your requirements and let AI generate comprehensive test cases.'}
+          {phase === 'linking' && 'Optionally link related features to give the AI more context before generating.'}
+          {phase === 'generated' && 'Review the generated test cases and navigate to the feature to curate them.'}
         </p>
       </div>
 
@@ -90,144 +141,267 @@ export default function NewFeaturePage() {
       {error && (
         <Card className="border-destructive/50 bg-destructive/10">
           <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <AlertTriangle className="w-5 h-5 text-destructive" />
-              <p className="text-sm text-destructive">{error}</p>
-            </div>
+            {error.kind === 'validation' ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-destructive shrink-0" />
+                  <p className="text-sm font-medium text-destructive">
+                    Your requirements need some work before we can generate test cases.
+                  </p>
+                </div>
+                <ul className="ml-7 list-disc list-inside space-y-1">
+                  {error.issues.map((issue, i) => (
+                    <li key={i} className="text-sm text-destructive">{issue}</li>
+                  ))}
+                </ul>
+                {error.suggestions.length > 0 && (
+                  <div className="ml-7 flex items-start gap-2 text-sm text-muted-foreground">
+                    <Lightbulb className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
+                    <ul className="space-y-1">
+                      {error.suggestions.map((suggestion, i) => (
+                        <li key={i}>{suggestion}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <div className="ml-7 pt-1 border-t border-destructive/20">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={skipLlmValidation}
+                      onChange={(e) => setSkipLlmValidation(e.target.checked)}
+                      className="rounded border-destructive/50 accent-destructive"
+                    />
+                    <span className="text-sm text-muted-foreground">
+                      Proceed anyway — skip AI quality check and submit as-is
+                    </span>
+                  </label>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3">
+                <AlertTriangle className="w-5 h-5 text-destructive shrink-0" />
+                <p className="text-sm text-destructive">{error.message}</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
 
-      <div className="grid gap-8 lg:grid-cols-2">
-        {/* Form Section */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Pencil className="w-5 h-5 text-primary" />
-              Feature Details
-            </CardTitle>
-            <CardDescription>
-              Enter the feature information and requirements
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="space-y-2">
-                <Label htmlFor="title">Feature Title *</Label>
-                <Input
-                  id="title"
-                  placeholder="e.g., User Authentication"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  disabled={isLoading || generatedCases.length > 0}
-                />
-              </div>
+      {/* Phase 1: Form */}
+      {phase === 'form' && (
+        <div className="grid gap-8 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Pencil className="w-5 h-5 text-primary" />
+                Feature Details
+              </CardTitle>
+              <CardDescription>
+                Enter the feature information and requirements
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleCreate} className="space-y-6">
+                <div className="space-y-2">
+                  <Label htmlFor="title">Feature Title *</Label>
+                  <Input
+                    id="title"
+                    placeholder="e.g., User Authentication"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    disabled={createFeatureMutation.isPending}
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
-                <Input
-                  id="description"
-                  placeholder="Brief description of the feature"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  disabled={isLoading || generatedCases.length > 0}
-                />
-              </div>
+                <div className="space-y-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Input
+                    id="description"
+                    placeholder="Brief description of the feature"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    disabled={createFeatureMutation.isPending}
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="template">Generation Template</Label>
-                <Select
-                  value={selectedTemplateId}
-                  onValueChange={setSelectedTemplateId}
-                  disabled={isLoading || generatedCases.length > 0}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a template (optional)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {templates.map((template) => (
-                      <SelectItem key={template.id} value={template.id.toString()}>
-                        {template.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Templates customize how AI generates test cases
-                </p>
-              </div>
+                <div className="space-y-2">
+                  <Label htmlFor="template">Generation Template</Label>
+                  <Select
+                    value={selectedTemplateId}
+                    onValueChange={setSelectedTemplateId}
+                    disabled={createFeatureMutation.isPending}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a template (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {templates.map((template) => (
+                        <SelectItem key={template.id} value={template.id.toString()}>
+                          {template.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Templates customize how AI generates test cases
+                  </p>
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="requirements">Requirements *</Label>
-                <Textarea
-                  id="requirements"
-                  placeholder={`Paste your requirements here...
+                <div className="space-y-2">
+                  <Label htmlFor="requirements">Requirements *</Label>
+                  <Textarea
+                    id="requirements"
+                    placeholder={`Paste your requirements here...
 
 Example:
 - Users should be able to log in with email and password
 - Password must be at least 8 characters
 - Show error message for invalid credentials
 - Lock account after 5 failed attempts`}
-                  value={requirements}
-                  onChange={(e) => setRequirements(e.target.value)}
-                  disabled={isLoading || generatedCases.length > 0}
-                  className="min-h-[200px] font-mono text-sm"
-                />
-              </div>
+                    value={requirements}
+                    onChange={(e) => setRequirements(e.target.value)}
+                    disabled={createFeatureMutation.isPending}
+                    className="min-h-[200px] font-mono text-sm"
+                  />
+                </div>
 
-              {generatedCases.length === 0 ? (
                 <Button
                   type="submit"
                   className="w-full glow-teal"
-                  disabled={isLoading || !title.trim() || !requirements.trim()}
+                  disabled={createFeatureMutation.isPending || !title.trim() || !requirements.trim()}
                 >
-                  {isLoading ? (
+                  {createFeatureMutation.isPending ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      {generateTestCasesMutation.isPending ? 'Generating Test Cases...' : 'Creating Feature...'}
+                      Creating Feature...
                     </>
                   ) : (
                     <>
-                      <Zap className="w-4 h-4 mr-2" />
-                      Generate Test Cases
+                      <Pencil className="w-4 h-4 mr-2" />
+                      Create Feature
                     </>
                   )}
                 </Button>
-              ) : (
-                <Button
-                  type="button"
-                  className="w-full"
-                  onClick={handleViewFeature}
-                >
-                  <Eye className="w-4 h-4 mr-2" />
-                  View Feature & Curate Test Cases
-                </Button>
-              )}
-            </form>
-          </CardContent>
-        </Card>
+              </form>
+            </CardContent>
+          </Card>
 
-        {/* Generated Test Cases Preview */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold">Generated Test Cases</h2>
-            {generatedCases.length > 0 && (
-              <Badge variant="secondary" className="text-primary">
-                {generatedCases.length} cases
-              </Badge>
-            )}
+          {/* Right panel: hint */}
+          <div className="hidden lg:flex flex-col items-center justify-center text-center gap-4 text-muted-foreground">
+            <Link2 className="w-16 h-16 opacity-20" />
+            <div className="space-y-1">
+              <p className="font-medium text-foreground/60">Link related features</p>
+              <p className="text-sm max-w-xs">
+                After creating your feature you&apos;ll get the chance to link related features as
+                context before the AI generates test cases.
+              </p>
+            </div>
           </div>
+        </div>
+      )}
 
-          {generatedCases.length === 0 ? (
-            <Card className="border-dashed h-[400px] flex items-center justify-center">
-              <CardContent className="text-center">
-                <Lightbulb className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground">
-                  Test cases will appear here after generation
-                </p>
+      {/* Phase 2: Link Context */}
+      {phase === 'linking' && createdFeatureId !== null && (
+        <div className="grid gap-8 lg:grid-cols-2">
+          {/* Left: feature summary + actions */}
+          <div className="space-y-6">
+            <Card className="border-primary/30 bg-primary/5">
+              <CardContent className="pt-6">
+                <div className="flex items-start gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-primary">Feature created</p>
+                    <p className="font-semibold truncate mt-0.5">{title}</p>
+                    {description && (
+                      <p className="text-sm text-muted-foreground mt-1 truncate">{description}</p>
+                    )}
+                  </div>
+                </div>
               </CardContent>
             </Card>
-          ) : (
+
+            <div className="space-y-3">
+              <div className="flex items-start gap-2 text-sm text-muted-foreground p-3 rounded-lg bg-muted/50">
+                <Lightbulb className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
+                <p>
+                  Linked features provide additional context for the AI, resulting in more relevant
+                  and accurate test cases.
+                </p>
+              </div>
+
+              <Button
+                className="w-full glow-teal"
+                onClick={handleGenerate}
+                disabled={generateTestCasesMutation.isPending}
+              >
+                {generateTestCasesMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Generating Test Cases...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-4 h-4 mr-2" />
+                    Generate Test Cases
+                  </>
+                )}
+              </Button>
+
+              <Button
+                variant="ghost"
+                className="w-full"
+                onClick={handleGenerate}
+                disabled={generateTestCasesMutation.isPending}
+              >
+                <SkipForward className="w-4 h-4 mr-2" />
+                Skip &amp; Generate
+              </Button>
+            </div>
+          </div>
+
+          {/* Right: LinkManager */}
+          <LinkManager featureId={createdFeatureId} />
+        </div>
+      )}
+
+      {/* Phase 3: Generated test cases preview */}
+      {phase === 'generated' && createdFeatureId !== null && (
+        <div className="grid gap-8 lg:grid-cols-2">
+          {/* Left: summary + navigate */}
+          <div className="space-y-6">
+            <Card className="border-primary/30 bg-primary/5">
+              <CardContent className="pt-6">
+                <div className="flex items-start gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-primary">Feature ready</p>
+                    <p className="font-semibold truncate mt-0.5">{title}</p>
+                    {description && (
+                      <p className="text-sm text-muted-foreground mt-1 truncate">{description}</p>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Button className="w-full" onClick={handleViewFeature}>
+              <Eye className="w-4 h-4 mr-2" />
+              View Feature &amp; Curate Test Cases
+            </Button>
+          </div>
+
+          {/* Right: generated test cases */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold">Generated Test Cases</h2>
+              {generatedCases.length > 0 && (
+                <Badge variant="secondary" className="text-primary">
+                  {generatedCases.length} cases
+                </Badge>
+              )}
+            </div>
+
             <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
               {generatedCases.map((testCase, index) => (
                 <Card
@@ -268,9 +442,9 @@ Example:
                 </Card>
               ))}
             </div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

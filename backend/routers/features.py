@@ -12,6 +12,7 @@ from models import (
     FeatureUpdate
 )
 from repositories.feature_repository import FeatureRepository, get_feature_repository
+from services.validation_service import ValidationService, get_validation_service
 
 router = APIRouter(prefix="/features", tags=["Features"])
 
@@ -20,9 +21,14 @@ router = APIRouter(prefix="/features", tags=["Features"])
 def create_feature(
     feature: FeatureCreate, 
     repo: FeatureRepository = Depends(get_feature_repository),
+    validation_service: ValidationService = Depends(get_validation_service),
     _: str = Depends(verify_api_key)
 ) -> Feature:
     """Create a new feature."""
+    validation_service.validate_requirements(
+        feature.raw_requirements,
+        skip_llm=feature.skip_llm_validation,
+    )
     db_feature = Feature.model_validate(feature)
     return repo.create(db_feature)
 
@@ -56,12 +62,18 @@ def update_feature(
     feature_id: int, 
     feature_update: FeatureUpdate, 
     repo: FeatureRepository = Depends(get_feature_repository),
+    validation_service: ValidationService = Depends(get_validation_service),
     _: str = Depends(verify_api_key)
 ) -> Feature:
     """Update a feature."""
     feature = repo.get(feature_id)
     if not feature:
         raise ResourceNotFoundError("Feature", feature_id)
+    if feature_update.raw_requirements is not None:
+        validation_service.validate_requirements(
+            feature_update.raw_requirements,
+            skip_llm=feature_update.skip_llm_validation,
+        )
     return repo.update(feature, feature_update)
 
 

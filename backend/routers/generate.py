@@ -15,6 +15,7 @@ from repositories.template_repository import TemplateRepository, get_template_re
 from repositories.test_case_repository import TestCaseRepository, get_test_case_repository
 from repositories.link_repository import LinkRepository, get_link_repository
 from services.llm_service import get_llm_service, LLMService
+from services.validation_service import ValidationService, get_validation_service
 
 router = APIRouter(prefix="/generate", tags=["Generation"])
 
@@ -40,6 +41,7 @@ def generate_test_cases(
     test_case_repo: TestCaseRepository = Depends(get_test_case_repository),
     link_repo: LinkRepository = Depends(get_link_repository),
     llm_service: LLMService = Depends(get_llm_service),
+    validation_service: ValidationService = Depends(get_validation_service),
     _: str = Depends(verify_api_key)
 ) -> GenerateResponse:
     """
@@ -60,6 +62,14 @@ def generate_test_cases(
     feature = feature_repo.get(request.feature_id)
     if not feature:
         raise ResourceNotFoundError("Feature", request.feature_id)
+
+    # Validate requirements quality before incurring any LLM cost.
+    # This acts as a second line of defence for features saved before
+    # validation was introduced.
+    validation_service.validate_requirements(
+        feature.raw_requirements,
+        skip_llm=request.skip_llm_validation,
+    )
     
     # Get template if specified
     template_content = None

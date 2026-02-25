@@ -65,6 +65,24 @@ class ValidationError(QACraftException):
         super().__init__(message=message, status_code=400)
 
 
+class RequirementsValidationException(QACraftException):
+    """Raised when user-provided requirements fail content validation.
+    
+    Carries structured issues and suggestions so the API can return
+    actionable feedback to the client (422 Unprocessable Entity).
+    
+    Examples:
+        - Text is too short or contains too few words
+        - Input appears to be code, not requirements
+        - Content is too vague to generate meaningful test cases
+    """
+    
+    def __init__(self, issues: list[str], suggestions: list[str]):
+        self.issues = issues
+        self.suggestions = suggestions
+        super().__init__(message="Requirements validation failed", status_code=422)
+
+
 class LLMServiceError(QACraftException):
     """Raised when the LLM service encounters an error.
     

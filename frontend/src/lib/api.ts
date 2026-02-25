@@ -31,8 +31,12 @@ function getHeaders(includeContentType = false): HeadersInit {
 // These types are derived from the auto-generated api-types.ts
 
 export type Feature = components['schemas']['FeatureRead'];
-export type FeatureCreate = components['schemas']['FeatureCreate'];
-export type FeatureUpdate = components['schemas']['FeatureUpdate'];
+export type FeatureCreate = components['schemas']['FeatureCreate'] & {
+  skip_llm_validation?: boolean;
+};
+export type FeatureUpdate = components['schemas']['FeatureUpdate'] & {
+  skip_llm_validation?: boolean;
+};
 
 export type Template = components['schemas']['TemplateRead'];
 export type TemplateCreate = components['schemas']['TemplateCreate'];
@@ -59,7 +63,9 @@ export interface ManualTestCaseInput {
   refinement_notes?: string | null;
 }
 
-export type GenerateRequest = components['schemas']['GenerateRequest'];
+export type GenerateRequest = components['schemas']['GenerateRequest'] & {
+  skip_llm_validation?: boolean;
+};
 export type GenerateResponse = components['schemas']['GenerateResponse'];
 
 export type RefinementRequest = components['schemas']['RefinementRequest'];
@@ -156,6 +162,16 @@ class APIError extends Error {
   }
 }
 
+export class ValidationAPIError extends Error {
+  readonly name = 'ValidationAPIError';
+  constructor(
+    public readonly issues: string[],
+    public readonly suggestions: string[],
+  ) {
+    super('Requirements validation failed');
+  }
+}
+
 // #region agent log
 function _dbgLog(location: string, message: string, data?: Record<string, unknown>) {
   fetch('http://127.0.0.1:7242/ingest/c34574de-c7ef-4bd6-a6bf-37938fd4e65a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a8936c'},body:JSON.stringify({sessionId:'a8936c',location,message,data:data||{},timestamp:Date.now()})}).catch(()=>{});
@@ -169,7 +185,16 @@ async function handleResponse<T>(response: Response): Promise<T> {
   
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
-    throw new APIError(response.status, error.detail || 'Request failed');
+    if (
+      response.status === 422 &&
+      error.detail &&
+      typeof error.detail === 'object' &&
+      error.detail.type === 'requirements_validation_error'
+    ) {
+      throw new ValidationAPIError(error.detail.issues ?? [], error.detail.suggestions ?? []);
+    }
+    const message = typeof error.detail === 'string' ? error.detail : 'Request failed';
+    throw new APIError(response.status, message);
   }
   
   // #region agent log

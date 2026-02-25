@@ -56,7 +56,7 @@ class Feature(FeatureBase, table=True):
 
 class FeatureCreate(FeatureBase):
     """Schema for creating a Feature."""
-    pass
+    skip_llm_validation: bool = False
 
 
 class FeatureRead(FeatureBase):
@@ -70,6 +70,7 @@ class FeatureUpdate(SQLModel):
     title: Optional[str] = None
     description: Optional[str] = None
     raw_requirements: Optional[str] = None
+    skip_llm_validation: bool = False
 
 
 # ============== Feature Link Models ==============
@@ -276,6 +277,7 @@ class GenerateRequest(SQLModel):
     """Request schema for test case generation."""
     feature_id: int
     template_id: Optional[int] = None
+    skip_llm_validation: bool = False
 
 
 class GenerateResponse(SQLModel):

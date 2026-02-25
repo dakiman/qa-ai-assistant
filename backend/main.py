@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from config import get_settings
-from exceptions import QACraftException, LLMServiceError
+from exceptions import QACraftException, LLMServiceError, RequirementsValidationException
 from logging_config import setup_logging, get_logger, RequestIdMiddleware
 from routers import features, templates, generate, test_cases, refine, export, links
 from seed import seed_default_templates
@@ -150,6 +150,31 @@ def health_check():
 
 
 # --- Exception Handlers ---
+
+@app.exception_handler(RequirementsValidationException)
+async def requirements_validation_handler(request: Request, exc: RequirementsValidationException):
+    """
+    Handle requirements content validation failures.
+
+    Returns a structured 422 with issues and suggestions so the client
+    can display actionable feedback to the user.
+    """
+    logger.warning(
+        "Requirements validation failed (path=%s): %s",
+        request.url.path,
+        exc.issues,
+    )
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": {
+                "type": "requirements_validation_error",
+                "issues": exc.issues,
+                "suggestions": exc.suggestions,
+            }
+        },
+    )
+
 
 @app.exception_handler(QACraftException)
 async def qa_craft_exception_handler(request: Request, exc: QACraftException):

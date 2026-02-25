@@ -8,6 +8,8 @@ venv/
 env/
 .venv/
 .env
+.env.local
+.env.*.local
 *.egg-info/
 dist/
 build/
@@ -42,6 +44,9 @@ npm-debug.log*
 .coverage
 htmlcov/
 .pytest_cache/
+
+# Cursor IDE
+.cursor/projects/
 
 # Misc
 *.bak
