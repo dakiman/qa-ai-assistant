@@ -28,11 +28,15 @@ const navigation = [
   },
 ];
 
-export function Sidebar() {
+interface SidebarContentsProps {
+  onNavigate?: () => void;
+}
+
+export function SidebarContents({ onNavigate }: SidebarContentsProps = {}) {
   const pathname = usePathname();
 
   return (
-    <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-sidebar-border bg-sidebar">
+    <div className="flex h-full flex-col">
       {/* Logo */}
       <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-6">
         <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary glow-teal">
@@ -50,14 +54,15 @@ export function Sidebar() {
           Navigation
         </p>
         {navigation.map((item) => {
-          const isActive = pathname === item.href || 
+          const isActive = pathname === item.href ||
             (item.href !== '/' && pathname.startsWith(item.href));
           const Icon = item.icon;
-          
+
           return (
             <Link
               key={item.name}
               href={item.href}
+              onClick={onNavigate}
               className={cn(
                 'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
                 isActive
@@ -73,13 +78,20 @@ export function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="absolute bottom-0 left-0 right-0 border-t border-sidebar-border p-4">
+      <div className="mt-auto border-t border-sidebar-border p-4">
         <div className="flex items-center gap-3 rounded-lg bg-sidebar-accent/30 px-3 py-2">
           <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
           <span className="text-xs text-muted-foreground">API Connected</span>
         </div>
       </div>
-    </aside>
+    </div>
   );
 }
 
+export function Sidebar() {
+  return (
+    <aside className="hidden md:block fixed left-0 top-0 z-40 h-screen w-64 border-r border-sidebar-border bg-sidebar">
+      <SidebarContents />
+    </aside>
+  );
+}

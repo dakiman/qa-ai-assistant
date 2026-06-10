@@ -18,6 +18,7 @@ from functools import lru_cache
 from typing import Literal, Optional
 
 import instructor
+from instructor.core import InstructorRetryException
 from anthropic import Anthropic, APIError as AnthropicAPIError
 from openai import OpenAI, OpenAIError
 from pydantic import BaseModel
@@ -107,11 +108,19 @@ class ValidationService:
             provider = self.settings.llm_provider
             if provider == "openai" and self.settings.openai_api_key:
                 self._client = instructor.from_openai(
-                    OpenAI(api_key=self.settings.openai_api_key)
+                    OpenAI(api_key=self.settings.openai_api_key, timeout=30.0)
                 )
             elif provider == "anthropic" and self.settings.anthropic_api_key:
                 self._client = instructor.from_anthropic(
-                    Anthropic(api_key=self.settings.anthropic_api_key)
+                    Anthropic(api_key=self.settings.anthropic_api_key, timeout=30.0)
+                )
+            elif provider == "openrouter" and self.settings.openrouter_api_key:
+                self._client = instructor.from_openai(
+                    OpenAI(
+                        api_key=self.settings.openrouter_api_key,
+                        base_url="https://openrouter.ai/api/v1",
+                        timeout=30.0,
+                    )
                 )
         return self._client
 
@@ -240,17 +249,17 @@ class ValidationService:
 
     def _llm_validate(self, text: str) -> RequirementsValidation:
         """Call a cheap LLM to semantically classify the requirements text."""
-        model = (
-            self.settings.openai_validation_model
-            if self.settings.llm_provider == "openai"
-            else self.settings.anthropic_validation_model
-        )
+        model = {
+            "openai": self.settings.openai_validation_model,
+            "anthropic": self.settings.anthropic_validation_model,
+            "openrouter": self.settings.openrouter_validation_model,
+        }.get(self.settings.llm_provider, self.settings.openai_validation_model)
         logger.debug("Running LLM validation with model=%s", model)
 
         user_prompt = _VALIDATION_USER_TEMPLATE.format(text=text[:5000])
 
         try:
-            if self.settings.llm_provider == "openai":
+            if self.settings.llm_provider in ("openai", "openrouter"):
                 return self.client.chat.completions.create(
                     model=model,
                     response_model=RequirementsValidation,
@@ -270,7 +279,7 @@ class ValidationService:
                     ],
                     system=_VALIDATION_SYSTEM_PROMPT,
                 )
-        except instructor.exceptions.InstructorRetryException as exc:
+        except InstructorRetryException as exc:
             logger.error("LLM validation failed to return valid structure: %s", exc)
             raise LLMServiceError("Validation service could not assess the requirements") from exc
         except (OpenAIError, AnthropicAPIError) as exc:

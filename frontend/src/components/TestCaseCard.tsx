@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { Check, X, RotateCcw, Pencil, Sparkles, Info } from 'lucide-react';
 import { useAcceptTestCase, useRejectTestCase, useResetTestCase } from '@/lib/queries';
 import type { TestCase } from '@/lib/api';
+import { EditTestCaseDialog } from './EditTestCaseDialog';
 
 interface TestCaseCardProps {
   testCase: TestCase;
@@ -172,9 +173,20 @@ export function TestCaseCard({ testCase, onStatusChange }: TestCaseCardProps) {
             </Button>
           )}
           
-          <Button size="sm" variant="ghost" className="shrink-0">
-            <Pencil className="w-4 h-4" />
-          </Button>
+          <EditTestCaseDialog
+            testCase={testCase}
+            trigger={
+              <Button
+                size="sm"
+                variant="ghost"
+                className="shrink-0"
+                aria-label="Edit test case"
+                disabled={loading}
+              >
+                <Pencil className="w-4 h-4" />
+              </Button>
+            }
+          />
         </div>
       </CardContent>
     </Card>

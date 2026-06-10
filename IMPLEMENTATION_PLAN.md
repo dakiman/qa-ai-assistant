@@ -24,9 +24,9 @@ This document contains a prioritized implementation plan for addressing technica
 3. Use `with Session(engine) as session:` pattern instead of `next(get_session())`
 
 **Acceptance Criteria:**
-- [ ] Session is properly opened and closed in lifespan handler
-- [ ] Template seeding is extracted to a separate module
-- [ ] No `next(get_session())` usage anywhere in codebase
+- [x] Session is properly opened and closed in lifespan handler
+- [x] Template seeding is extracted to a separate module
+- [x] No `next(get_session())` usage anywhere in codebase
 
 ---
 
@@ -49,9 +49,9 @@ This document contains a prioritized implementation plan for addressing technica
 3. Ensure all routes remain synchronous (`def` not `async def`)
 
 **Acceptance Criteria:**
-- [ ] `aiosqlite` removed from dependencies
-- [ ] Clear documentation on sync vs async decision
-- [ ] No mixed async/sync patterns
+- [x] `aiosqlite` removed from dependencies
+- [x] Clear documentation on sync vs async decision
+- [x] No mixed async/sync patterns
 
 ---
 
@@ -94,9 +94,9 @@ logger = logging.getLogger("qa_craft")
 ```
 
 **Acceptance Criteria:**
-- [ ] No `print()` statements in backend code
-- [ ] All log messages use appropriate levels (DEBUG, INFO, WARNING, ERROR)
-- [ ] Request tracing is possible via logs
+- [x] No `print()` statements in backend code
+- [x] All log messages use appropriate levels (DEBUG, INFO, WARNING, ERROR)
+- [x] Request tracing is possible via logs
 
 ---
 
@@ -129,9 +129,9 @@ def get_llm_service() -> LLMService:
 ```
 
 **Acceptance Criteria:**
-- [ ] No global `_llm_service` variable
-- [ ] Service is injected via FastAPI `Depends()`
-- [ ] Service can be easily mocked in tests
+- [x] No global `_llm_service` variable
+- [x] Service is injected via FastAPI `Depends()`
+- [x] Service can be easily mocked in tests
 
 ---
 
@@ -158,8 +158,8 @@ created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 ```
 
 **Acceptance Criteria:**
-- [ ] No usage of `datetime.utcnow()` in codebase
-- [ ] All datetime fields use timezone-aware UTC
+- [x] No usage of `datetime.utcnow()` in codebase
+- [x] All datetime fields use timezone-aware UTC
 
 ---
 
@@ -188,9 +188,9 @@ python-dotenv>=1.0.1
 ```
 
 **Acceptance Criteria:**
-- [ ] All dependencies updated to recent stable versions
-- [ ] Application starts without errors
-- [ ] LLM generation still works with updated instructor library
+- [x] All dependencies updated to recent stable versions
+- [x] Application starts without errors
+- [x] LLM generation still works with updated instructor library
 
 ---
 
@@ -227,9 +227,9 @@ class Settings(BaseSettings):
 ```
 
 **Acceptance Criteria:**
-- [ ] CORS origins configurable via environment variable
-- [ ] Production mode has stricter CORS settings
-- [ ] Local development still works seamlessly
+- [x] CORS origins configurable via environment variable
+- [x] Production mode has stricter CORS settings
+- [x] Local development still works seamlessly
 
 ---
 
@@ -275,10 +275,10 @@ async def verify_api_key(api_key: str = Security(api_key_header)) -> str:
 ```
 
 **Acceptance Criteria:**
-- [ ] All mutating endpoints require API key
-- [ ] Read endpoints optionally require API key (configurable)
-- [ ] Frontend sends API key with all requests
-- [ ] Development mode works without API key for local testing
+- [x] All mutating endpoints require API key
+- [x] Read endpoints optionally require API key (configurable)
+- [x] Frontend sends API key with all requests
+- [x] Development mode works without API key for local testing
 
 ---
 
@@ -332,8 +332,8 @@ engine = create_engine(
 ```
 
 **Acceptance Criteria:**
-- [ ] SQL queries not logged in production
-- [ ] Can enable SQL logging via environment variable for debugging
+- [x] SQL queries not logged in production
+- [x] Can enable SQL logging via environment variable for debugging
 
 ---
 
@@ -395,10 +395,10 @@ class BaseRepository(Generic[ModelType]):
 ```
 
 **Acceptance Criteria:**
-- [ ] All database operations go through repositories
-- [ ] Routers only contain HTTP handling logic
-- [ ] Repositories are injected via FastAPI dependencies
-- [ ] Business logic can be easily unit tested
+- [x] All database operations go through repositories
+- [x] Routers only contain HTTP handling logic
+- [x] Repositories are injected via FastAPI dependencies
+- [x] Business logic can be easily unit tested
 
 ---
 
@@ -434,10 +434,10 @@ alembic upgrade head
 ```
 
 **Acceptance Criteria:**
-- [ ] Alembic configured and working
-- [ ] Initial migration created matching current schema
-- [ ] `create_all()` removed from startup
-- [ ] Migration runs automatically or via command
+- [x] Alembic configured and working
+- [x] Initial migration created matching current schema
+- [x] `create_all()` removed from startup
+- [x] Migration runs automatically or via command
 
 ---
 
@@ -459,9 +459,9 @@ alembic upgrade head
 3. Add npm script: `"generate-types": "npx openapi-typescript http://localhost:8000/openapi.json -o src/lib/api-types.ts"`
 
 **Acceptance Criteria:**
-- [ ] TypeScript types generated from OpenAPI spec
-- [ ] Frontend uses generated types instead of manual definitions
-- [ ] Type generation included in build process
+- [x] TypeScript types generated from OpenAPI spec
+- [x] Frontend uses generated types instead of manual definitions
+- [x] Type generation included in build process
 
 ---
 
@@ -521,10 +521,10 @@ export function useAcceptTestCase() {
 ```
 
 **Acceptance Criteria:**
-- [ ] All data fetching uses React Query
-- [ ] Data is cached between navigations
-- [ ] Loading and error states handled consistently
-- [ ] Optimistic updates for status changes
+- [x] All data fetching uses React Query
+- [x] Data is cached between navigations
+- [x] Loading and error states handled consistently
+- [x] Optimistic updates for status changes
 
 ---
 
@@ -579,10 +579,10 @@ export default function Error({
 ```
 
 **Acceptance Criteria:**
-- [ ] Application doesn't crash on component errors
-- [ ] Users see friendly error messages
-- [ ] Retry functionality works
-- [ ] Errors are logged for debugging
+- [x] Application doesn't crash on component errors
+- [x] Users see friendly error messages
+- [x] Retry functionality works
+- [x] Errors are logged for debugging
 
 ---
 
@@ -627,9 +627,9 @@ export default function Error({
 - Loader → `<Loader2 />` (with `animate-spin`)
 
 **Acceptance Criteria:**
-- [ ] No inline SVGs in component files
-- [ ] All icons imported from lucide-react
-- [ ] Consistent icon sizing across components
+- [x] No inline SVGs in component files
+- [x] All icons imported from lucide-react
+- [x] Consistent icon sizing across components
 
 ---
 
@@ -676,10 +676,10 @@ class ResourceNotFoundError(QACraftException):
 ```
 
 **Acceptance Criteria:**
-- [ ] All exceptions use custom exception classes
-- [ ] Global exception handler returns consistent JSON format
-- [ ] No silent error swallowing
-- [ ] All errors are logged appropriately
+- [x] All exceptions use custom exception classes
+- [x] Global exception handler returns consistent JSON format
+- [x] No silent error swallowing
+- [x] All errors are logged appropriately
 
 ---
 
@@ -762,8 +762,8 @@ def client_fixture(session: Session):
 3. Rely on parent to update state after API calls
 
 **Acceptance Criteria:**
-- [ ] No duplicate state between parent and child
-- [ ] State updates correctly after accept/reject/reset
+- [x] No duplicate state between parent and child
+- [x] State updates correctly after accept/reject/reset
 
 ---
 
@@ -788,10 +788,10 @@ def client_fixture(session: Session):
 3. Support filtering by status
 
 **Acceptance Criteria:**
-- [ ] Export to JSON works
-- [ ] Export to CSV works
-- [ ] Can filter exported cases by status
-- [ ] File downloads with proper filename
+- [x] Export to JSON works
+- [x] Export to CSV works
+- [x] Can filter exported cases by status
+- [x] File downloads with proper filename
 
 ---
 
@@ -815,10 +815,10 @@ def client_fixture(session: Session):
 4. Persist filter state in URL
 
 **Acceptance Criteria:**
-- [ ] Can filter by status (draft/accepted/rejected)
-- [ ] Can filter by type (edge case, manual)
-- [ ] Can search by title
-- [ ] Filters persist in URL
+- [x] Can filter by status (draft/accepted/rejected)
+- [x] Can filter by type (edge case, manual)
+- [x] Can search by title
+- [x] Filters persist in URL
 
 ---
 
@@ -843,10 +843,10 @@ def client_fixture(session: Session):
 4. Add template preview
 
 **Acceptance Criteria:**
-- [ ] Can create new templates
-- [ ] Can edit existing templates
-- [ ] Can delete templates (with confirmation)
-- [ ] Template changes reflect in generation
+- [x] Can create new templates
+- [x] Can edit existing templates
+- [x] Can delete templates (with confirmation)
+- [x] Template changes reflect in generation
 
 ---
 

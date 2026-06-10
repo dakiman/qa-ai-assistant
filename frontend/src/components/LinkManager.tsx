@@ -210,7 +210,7 @@ function FeatureLinkItem({ link, onDelete, isDeleting }: FeatureLinkItemProps) {
       <Button
         variant="ghost"
         size="sm"
-        className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive hover:bg-destructive/10"
+        className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
         onClick={onDelete}
         disabled={isDeleting}
       >
@@ -248,7 +248,7 @@ function TestCaseLinkItem({ link, onDelete, isDeleting }: TestCaseLinkItemProps)
       <Button
         variant="ghost"
         size="sm"
-        className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive hover:bg-destructive/10"
+        className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
         onClick={onDelete}
         disabled={isDeleting}
       >

@@ -172,6 +172,30 @@ class TestCaseRepository(BaseRepository[TestCase]):
         
         return updated_cases
     
+    def delete_drafts(self, feature_id: int) -> int:
+        """
+        Delete all DRAFT test cases for a feature.
+
+        Used when force-regenerating test cases.
+
+        Args:
+            feature_id: Feature ID whose drafts to delete
+
+        Returns:
+            Number of drafts deleted
+        """
+        statement = select(TestCase).where(
+            TestCase.feature_id == feature_id,
+            TestCase.status == TestCaseStatus.DRAFT
+        )
+        drafts = self.session.exec(statement).all()
+        count = len(drafts)
+        for draft in drafts:
+            self.session.delete(draft)
+        if count > 0:
+            self.session.commit()
+        return count
+
     def create_from_draft(
         self,
         feature_id: int,

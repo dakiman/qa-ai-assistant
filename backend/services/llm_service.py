@@ -1,6 +1,7 @@
 """LLM Service for generating and refining test cases using instructor library."""
 
 import instructor
+from instructor.core import InstructorRetryException
 from openai import OpenAI, OpenAIError
 from anthropic import Anthropic, APIError as AnthropicAPIError
 from pydantic import BaseModel
@@ -89,11 +90,19 @@ class LLMService:
         if self._client is None:
             if self.provider == "openai" and self.settings.openai_api_key:
                 self._client = instructor.from_openai(
-                    OpenAI(api_key=self.settings.openai_api_key)
+                    OpenAI(api_key=self.settings.openai_api_key, timeout=45.0)
                 )
             elif self.provider == "anthropic" and self.settings.anthropic_api_key:
                 self._client = instructor.from_anthropic(
-                    Anthropic(api_key=self.settings.anthropic_api_key)
+                    Anthropic(api_key=self.settings.anthropic_api_key, timeout=45.0)
+                )
+            elif self.provider == "openrouter" and self.settings.openrouter_api_key:
+                self._client = instructor.from_openai(
+                    OpenAI(
+                        api_key=self.settings.openrouter_api_key,
+                        base_url="https://openrouter.ai/api/v1",
+                        timeout=45.0,
+                    )
                 )
         return self._client
     
@@ -101,28 +110,30 @@ class LLMService:
         self,
         requirements: str,
         template_content: Optional[str] = None,
-        linked_context: Optional[str] = None
+        linked_context: Optional[str] = None,
+        target_count: int = 10
     ) -> list[TestCaseDraft]:
         """
         Generate initial test cases from requirements using LLM.
-        
+
         Args:
             requirements: Raw requirements text to analyze
             template_content: Optional template with system instructions
             linked_context: Optional formatted context from linked features/test cases
-            
+            target_count: Approximate number of test cases to generate (3-30)
+
         Returns:
             List of TestCaseDraft objects
         """
-        logger.info("Generating test cases (provider: %s)", self.provider)
+        logger.info("Generating test cases (provider: %s, target_count: %d)", self.provider, target_count)
         logger.debug("Requirements length: %d characters", len(requirements))
         if linked_context:
             logger.debug("Including linked context: %d characters", len(linked_context))
-        
+
         # Use mock if no API key or explicitly set to mock
         if self.provider == "mock" or self.client is None:
             logger.info("Using mock test case generation")
-            return self._generate_mock_test_cases(requirements)
+            return self._generate_mock_test_cases(requirements, target_count=target_count)
         
         # Build the system prompt
         system_prompt = template_content or self._get_default_system_prompt()
@@ -143,7 +154,7 @@ Use the above related context to inform your test case generation, but focus pri
 
 """
         
-        user_prompt = f"""{context_section}Analyze the following requirements and generate comprehensive test cases.
+        user_prompt = f"""{context_section}Analyze the following requirements and generate approximately {target_count} comprehensive test cases.
 
 Requirements:
 {sanitized_requirements}
@@ -161,9 +172,10 @@ For each test case, provide:
 Mark edge cases with is_edge_case=True."""
 
         try:
-            if self.provider == "openai":
+            if self.provider in ("openai", "openrouter"):
+                model = self.settings.openrouter_model if self.provider == "openrouter" else self.settings.openai_model
                 response = self.client.chat.completions.create(
-                    model=self.settings.openai_model,
+                    model=model,
                     response_model=TestCaseList,
                     messages=[
                         {"role": "system", "content": system_prompt},
@@ -182,14 +194,14 @@ Mark edge cases with is_edge_case=True."""
             else:
                 # Should not reach here since we check for mock above
                 raise LLMConfigurationError(f"Unknown LLM provider: {self.provider}")
-            
+
             logger.info("Generated %d test cases via LLM", len(response.test_cases))
             return response.test_cases
             
         except (OpenAIError, AnthropicAPIError) as e:
             logger.error("LLM API error during test case generation: %s", e, exc_info=True)
             raise LLMServiceError(f"LLM API error: {type(e).__name__}") from e
-        except instructor.exceptions.InstructorRetryException as e:
+        except InstructorRetryException as e:
             logger.error("LLM failed to produce valid response structure: %s", e, exc_info=True)
             raise LLMServiceError("AI failed to generate valid test case structure") from e
         except Exception as e:
@@ -201,29 +213,31 @@ Mark edge cases with is_edge_case=True."""
         requirements: str,
         accepted_cases: list[TestCaseRead],
         template_content: Optional[str] = None,
-        linked_context: Optional[str] = None
+        linked_context: Optional[str] = None,
+        max_new_cases: int = 5
     ) -> list[TestCaseDraft]:
         """
         Refine an existing test suite by finding gaps and adding edge cases.
-        
+
         Args:
             requirements: Original requirements text
             accepted_cases: List of accepted/manual test cases
             template_content: Optional template for styling consistency
             linked_context: Optional formatted context from linked features/test cases
-            
+            max_new_cases: Maximum number of new test cases to generate (1-15)
+
         Returns:
             List of new TestCaseDraft objects to add (edge cases and gap fillers)
         """
-        logger.info("Refining test suite (provider: %s, existing cases: %d)", 
-                    self.provider, len(accepted_cases))
+        logger.info("Refining test suite (provider: %s, existing cases: %d, max_new: %d)",
+                    self.provider, len(accepted_cases), max_new_cases)
         if linked_context:
             logger.debug("Including linked context: %d characters", len(linked_context))
-        
+
         # Use mock if no API key or explicitly set to mock
         if self.provider == "mock" or self.client is None:
             logger.info("Using mock refinement generation")
-            return self._generate_mock_refinements(requirements, accepted_cases)
+            return self._generate_mock_refinements(requirements, accepted_cases, max_new_cases=max_new_cases)
         
         # Format existing cases for the prompt
         existing_cases_text = self._format_existing_cases(accepted_cases)
@@ -274,16 +288,17 @@ ONLY generate NEW test cases that are NOT already covered. Mark all new cases as
 {existing_cases_text}
 
 ## Your Task:
-Analyze the requirements and existing test cases. Generate ONLY the missing edge cases and gap-filling test cases. Do NOT duplicate existing coverage.
+Analyze the requirements and existing test cases. Generate at most {max_new_cases} new test cases covering the missing edge cases and gap-filling test cases. Do NOT duplicate existing coverage.
 
 For each new test case:
 - Set is_edge_case=true
 - Include refinement_notes explaining why this case was added (e.g., "Covers boundary condition for maximum input length" or "Tests unauthorized access scenario")"""
 
         try:
-            if self.provider == "openai":
+            if self.provider in ("openai", "openrouter"):
+                model = self.settings.openrouter_model if self.provider == "openrouter" else self.settings.openai_model
                 response = self.client.chat.completions.create(
-                    model=self.settings.openai_model,
+                    model=model,
                     response_model=TestCaseList,
                     messages=[
                         {"role": "system", "content": system_prompt},
@@ -302,14 +317,14 @@ For each new test case:
             else:
                 # Should not reach here since we check for mock above
                 raise LLMConfigurationError(f"Unknown LLM provider: {self.provider}")
-            
+
             logger.info("Generated %d refinement cases via LLM", len(response.test_cases))
             return response.test_cases
             
         except (OpenAIError, AnthropicAPIError) as e:
             logger.error("LLM API error during test suite refinement: %s", e, exc_info=True)
             raise LLMServiceError(f"LLM API error: {type(e).__name__}") from e
-        except instructor.exceptions.InstructorRetryException as e:
+        except InstructorRetryException as e:
             logger.error("LLM failed to produce valid response for refinement: %s", e, exc_info=True)
             raise LLMServiceError("AI failed to generate valid refinement structure") from e
         except Exception as e:
@@ -419,13 +434,13 @@ Always structure your response as a list of test cases with clear titles, steps,
         }
         return display_map.get(link_type, link_type.value)
 
-    def _generate_mock_test_cases(self, requirements: str) -> list[TestCaseDraft]:
+    def _generate_mock_test_cases(self, requirements: str, target_count: int = 10) -> list[TestCaseDraft]:
         """Generate mock test cases for development without API key."""
-        
+
         # Parse requirements to generate contextual mocks
         req_lower = requirements.lower()
         test_cases = []
-        
+
         # Generate contextual test cases based on keywords
         if "login" in req_lower or "auth" in req_lower:
             test_cases.extend([
@@ -463,7 +478,7 @@ Always structure your response as a list of test cases with clear titles, steps,
                     is_edge_case=True
                 ),
             ])
-        
+
         if "search" in req_lower:
             test_cases.extend([
                 TestCaseDraft(
@@ -487,7 +502,7 @@ Always structure your response as a list of test cases with clear titles, steps,
                     is_edge_case=True
                 ),
             ])
-        
+
         if "form" in req_lower or "submit" in req_lower:
             test_cases.extend([
                 TestCaseDraft(
@@ -511,7 +526,7 @@ Always structure your response as a list of test cases with clear titles, steps,
                     is_edge_case=True
                 ),
             ])
-        
+
         # Default generic test cases if no keywords matched
         if not test_cases:
             test_cases = [
@@ -556,13 +571,14 @@ Always structure your response as a list of test cases with clear titles, steps,
                     is_edge_case=False
                 ),
             ]
-        
-        return test_cases
+
+        return test_cases[:target_count]
 
     def _generate_mock_refinements(
-        self, 
-        requirements: str, 
-        accepted_cases: list[TestCaseRead]
+        self,
+        requirements: str,
+        accepted_cases: list[TestCaseRead],
+        max_new_cases: int = 5
     ) -> list[TestCaseDraft]:
         """Generate mock refinement cases for development without API key."""
         
@@ -660,8 +676,9 @@ Always structure your response as a list of test cases with clear titles, steps,
                 is_edge_case=True,
                 refinement_notes="Race Condition: Concurrent operations must be tested to prevent data integrity issues."
             ))
-        
-        return refinements
+
+        # Trim to max_new_cases
+        return refinements[:max_new_cases]
 
 
 from functools import lru_cache

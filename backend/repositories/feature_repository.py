@@ -36,6 +36,22 @@ class FeatureRepository(BaseRepository[Feature]):
         self.session.refresh(feature)
         return feature
     
+    def increment_generation_count(self, feature: Feature) -> Feature:
+        """Increment the generation counter and commit."""
+        feature.generation_count += 1
+        self.session.add(feature)
+        self.session.commit()
+        self.session.refresh(feature)
+        return feature
+
+    def increment_refinement_count(self, feature: Feature) -> Feature:
+        """Increment the refinement counter and commit."""
+        feature.refinement_count += 1
+        self.session.add(feature)
+        self.session.commit()
+        self.session.refresh(feature)
+        return feature
+
     def get_with_test_cases(self, id: int) -> Optional[Feature]:
         """
         Get a feature with its test cases eagerly loaded.

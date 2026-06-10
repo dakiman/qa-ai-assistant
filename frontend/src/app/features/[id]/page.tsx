@@ -13,8 +13,16 @@ import { RefineActionBar } from '@/components/RefineActionBar';
 import { ExportButton } from '@/components/ExportButton';
 import { TestCaseFilters } from '@/components/TestCaseFilters';
 import { LinkManager } from '@/components/LinkManager';
-import { ChevronLeft, Pencil, Check, Plus, ClipboardCheck } from 'lucide-react';
-import { useFeatureDetail, useFeatureTestCases, queryKeys } from '@/lib/queries';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { ChevronLeft, Pencil, Check, Plus, ClipboardCheck, RefreshCw, Loader2 } from 'lucide-react';
+import { useFeatureDetail, useFeatureTestCases, useGenerateTestCases, queryKeys } from '@/lib/queries';
 import { useQueryClient } from '@tanstack/react-query';
 import type { TestCase, RefinementResponse, TestCaseFilters as Filters, TestCaseStatus } from '@/lib/api';
 
@@ -26,6 +34,8 @@ export default function FeatureDetailPage() {
   const queryClient = useQueryClient();
   
   const [refinementMessage, setRefinementMessage] = useState<string | null>(null);
+  const [regenerateDialogOpen, setRegenerateDialogOpen] = useState(false);
+  const generateMutation = useGenerateTestCases();
 
   // Parse filters from URL
   const filters: Filters = useMemo(() => ({
@@ -87,6 +97,20 @@ export default function FeatureDetailPage() {
     });
   };
 
+  const handleRegenerate = async () => {
+    try {
+      await generateMutation.mutateAsync({
+        feature_id: featureId,
+        force_regenerate: true,
+      });
+      // Refresh the feature so the generation_count badge reflects the increment.
+      queryClient.invalidateQueries({ queryKey: queryKeys.features.detail(featureId) });
+      setRegenerateDialogOpen(false);
+    } catch (err) {
+      console.error('Failed to regenerate test cases:', err);
+    }
+  };
+
   const handleRefinementComplete = (response: RefinementResponse) => {
     // Update the cache with refined test cases
     queryClient.setQueryData(
@@ -145,7 +169,7 @@ export default function FeatureDetailPage() {
   }
 
   return (
-    <div className="space-y-8 pb-24">
+    <div className="space-y-8 pb-[calc(6rem+env(safe-area-inset-bottom))]">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
@@ -155,6 +179,9 @@ export default function FeatureDetailPage() {
             </Link>
             <h1 className="text-3xl font-bold tracking-tight">{feature.title}</h1>
             <Badge variant="outline">#{feature.id}</Badge>
+            <Badge variant="outline" className="text-xs text-muted-foreground">
+              Gen {feature.generation_count ?? 0} · Refine {feature.refinement_count ?? 0}
+            </Badge>
           </div>
           <p className="text-muted-foreground">
             {feature.description || 'No description provided'}
@@ -162,6 +189,15 @@ export default function FeatureDetailPage() {
         </div>
         <div className="flex items-center gap-3 shrink-0">
           <ExportButton featureId={featureId} />
+          <Button
+            variant="outline"
+            onClick={() => setRegenerateDialogOpen(true)}
+            disabled={(feature.generation_count ?? 0) === 0}
+            title={(feature.generation_count ?? 0) === 0 ? 'No previous generation to regenerate' : undefined}
+          >
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Regenerate
+          </Button>
           <Button variant="outline">
             <Pencil className="w-4 h-4 mr-2" />
             Edit Feature
@@ -187,41 +223,41 @@ export default function FeatureDetailPage() {
       )}
 
       {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-6">
+      <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-6">
         <Card>
           <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground">Total</p>
-            <p className="text-3xl font-bold text-primary">{stats.total}</p>
+            <p className="text-2xl sm:text-3xl font-bold text-primary">{stats.total}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground">Draft</p>
-            <p className="text-3xl font-bold text-blue-400">{stats.draft}</p>
+            <p className="text-2xl sm:text-3xl font-bold text-blue-400">{stats.draft}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground">Accepted</p>
-            <p className="text-3xl font-bold text-green-400">{stats.accepted}</p>
+            <p className="text-2xl sm:text-3xl font-bold text-green-400">{stats.accepted}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground">Rejected</p>
-            <p className="text-3xl font-bold text-red-400">{stats.rejected}</p>
+            <p className="text-2xl sm:text-3xl font-bold text-red-400">{stats.rejected}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground">Edge Cases</p>
-            <p className="text-3xl font-bold text-amber-400">{stats.edgeCases}</p>
+            <p className="text-2xl sm:text-3xl font-bold text-amber-400">{stats.edgeCases}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground">Manual</p>
-            <p className="text-3xl font-bold text-blue-400">{stats.manual}</p>
+            <p className="text-2xl sm:text-3xl font-bold text-blue-400">{stats.manual}</p>
           </CardContent>
         </Card>
       </div>
@@ -314,8 +350,47 @@ export default function FeatureDetailPage() {
       <RefineActionBar
         featureId={featureId}
         testCases={testCasesForStats}
+        refinementCount={feature.refinement_count ?? 0}
         onRefinementComplete={handleRefinementComplete}
       />
+
+      {/* Regenerate Confirmation Dialog */}
+      <Dialog open={regenerateDialogOpen} onOpenChange={setRegenerateDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Regenerate test cases?</DialogTitle>
+            <DialogDescription>
+              This will delete the {stats.draft} existing draft case{stats.draft === 1 ? '' : 's'}. Accepted, rejected, and manual cases are preserved.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setRegenerateDialogOpen(false)}
+              disabled={generateMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleRegenerate}
+              disabled={generateMutation.isPending}
+            >
+              {generateMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Regenerating...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Regenerate
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

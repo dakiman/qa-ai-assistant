@@ -18,20 +18,23 @@ class Settings(BaseSettings):
     # API Keys
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
-    
-    # LLM Provider: "openai", "anthropic", or "mock"
+    openrouter_api_key: str | None = None
+
+    # LLM Provider: "openai", "anthropic", "openrouter", or "mock"
     llm_provider: str = "mock"
-    
+
     # LLM Model Selection
-    openai_model: str = "gpt-4-turbo-preview"
+    openai_model: str = "gpt-4-turbo"
     anthropic_model: str = "claude-3-sonnet-20240229"
-    
+    openrouter_model: str = "openrouter/free"
+
     # Validation (pre-LLM requirements quality gate)
     validation_enabled: bool = True
     validation_min_words: int = 5
     validation_min_chars: int = 30
     openai_validation_model: str = "gpt-4o-mini"
     anthropic_validation_model: str = "claude-3-haiku-20240307"
+    openrouter_validation_model: str = "openrouter/free"
     
     # API Settings
     api_v1_prefix: str = "/api/v1"

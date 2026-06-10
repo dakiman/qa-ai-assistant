@@ -7,7 +7,7 @@
 
 import type { components } from './api-types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
 /**
@@ -65,6 +65,8 @@ export interface ManualTestCaseInput {
 
 export type GenerateRequest = components['schemas']['GenerateRequest'] & {
   skip_llm_validation?: boolean;
+  target_count?: number;
+  force_regenerate?: boolean;
 };
 export type GenerateResponse = components['schemas']['GenerateResponse'];
 
@@ -172,17 +174,7 @@ export class ValidationAPIError extends Error {
   }
 }
 
-// #region agent log
-function _dbgLog(location: string, message: string, data?: Record<string, unknown>) {
-  fetch('http://127.0.0.1:7242/ingest/c34574de-c7ef-4bd6-a6bf-37938fd4e65a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a8936c'},body:JSON.stringify({sessionId:'a8936c',location,message,data:data||{},timestamp:Date.now()})}).catch(()=>{});
-}
-// #endregion
-
 async function handleResponse<T>(response: Response): Promise<T> {
-  // #region agent log
-  _dbgLog('api.ts:handleResponse', 'Response received', {status: response.status, ok: response.ok, hypothesisId: 'D'});
-  // #endregion
-  
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
     if (
@@ -196,18 +188,8 @@ async function handleResponse<T>(response: Response): Promise<T> {
     const message = typeof error.detail === 'string' ? error.detail : 'Request failed';
     throw new APIError(response.status, message);
   }
-  
-  // #region agent log
-  _dbgLog('api.ts:handleResponse', 'Before response.json()', {hypothesisId: 'D'});
-  // #endregion
-  
-  const result = await response.json();
-  
-  // #region agent log
-  _dbgLog('api.ts:handleResponse', 'After response.json()', {hasResult: !!result, hypothesisId: 'D'});
-  // #endregion
-  
-  return result;
+
+  return response.json();
 }
 
 // ============== Feature API ==============
@@ -313,27 +295,12 @@ export const templateApi = {
 
 export const generateApi = {
   async generateTestCases(data: GenerateRequest): Promise<GenerateResponse> {
-    // #region agent log
-    _dbgLog('api.ts:generateTestCases', 'START', {feature_id: data.feature_id, hypothesisId: 'D'});
-    // #endregion
-    
     const response = await fetch(`${API_BASE_URL}/generate/`, {
       method: 'POST',
       headers: getHeaders(true),
       body: JSON.stringify(data),
     });
-    
-    // #region agent log
-    _dbgLog('api.ts:generateTestCases', 'Fetch returned', {status: response.status, hypothesisId: 'D'});
-    // #endregion
-    
-    const result = await handleResponse<GenerateResponse>(response);
-    
-    // #region agent log
-    _dbgLog('api.ts:generateTestCases', 'END', {test_cases_count: result.test_cases?.length, hypothesisId: 'D'});
-    // #endregion
-    
-    return result;
+    return handleResponse<GenerateResponse>(response);
   },
 
   async getFeatureTestCases(featureId: number, filters?: TestCaseFilters): Promise<TestCase[]> {
@@ -434,27 +401,12 @@ export const testCaseApi = {
 
 export const refineApi = {
   async refineTestSuite(data: RefinementRequest): Promise<RefinementResponse> {
-    // #region agent log
-    _dbgLog('api.ts:refineTestSuite', 'START', {feature_id: data.feature_id, hypothesisId: 'D'});
-    // #endregion
-    
     const response = await fetch(`${API_BASE_URL}/features/${data.feature_id}/refine`, {
       method: 'POST',
       headers: getHeaders(true),
       body: JSON.stringify(data),
     });
-    
-    // #region agent log
-    _dbgLog('api.ts:refineTestSuite', 'Fetch returned', {status: response.status, hypothesisId: 'D'});
-    // #endregion
-    
-    const result = await handleResponse<RefinementResponse>(response);
-    
-    // #region agent log
-    _dbgLog('api.ts:refineTestSuite', 'END', {test_cases_count: result.test_cases?.length, hypothesisId: 'D'});
-    // #endregion
-    
-    return result;
+    return handleResponse<RefinementResponse>(response);
   },
 };
 

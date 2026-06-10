@@ -1,74 +1,48 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, AlertTriangle } from 'lucide-react';
 import { useRefineTestSuite } from '@/lib/queries';
 import type { TestCase, RefinementResponse } from '@/lib/api';
 
-// #region agent log
-function _dbgLog(location: string, message: string, data?: Record<string, unknown>) {
-  fetch('http://127.0.0.1:7242/ingest/c34574de-c7ef-4bd6-a6bf-37938fd4e65a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a8936c'},body:JSON.stringify({sessionId:'a8936c',location,message,data:data||{},timestamp:Date.now()})}).catch(()=>{});
-}
-// #endregion
+const REFINEMENT_WARNING_THRESHOLD = 3;
 
 interface RefineActionBarProps {
   featureId: number;
   testCases: TestCase[];
+  refinementCount: number;
   onRefinementComplete: (response: RefinementResponse) => void;
 }
 
-export function RefineActionBar({ featureId, testCases, onRefinementComplete }: RefineActionBarProps) {
+export function RefineActionBar({ featureId, testCases, refinementCount, onRefinementComplete }: RefineActionBarProps) {
   const [error, setError] = useState<string | null>(null);
-  
+  const [localRefinementCount, setLocalRefinementCount] = useState(refinementCount);
+
   // Mutation
   const refineMutation = useRefineTestSuite();
-  
-  // #region agent log
-  useEffect(() => {
-    _dbgLog('RefineActionBar', 'Mutation state changed', {
-      isPending: refineMutation.isPending,
-      isSuccess: refineMutation.isSuccess,
-      isError: refineMutation.isError,
-      hypothesisId: 'F'
-    });
-  }, [refineMutation.isPending, refineMutation.isSuccess, refineMutation.isError]);
-  // #endregion
 
   // Count cases ready for refinement (accepted + manual)
   const readyCount = testCases.filter(
     tc => tc.status === 'accepted' || tc.is_manual
   ).length;
 
+  const showWarning = localRefinementCount >= REFINEMENT_WARNING_THRESHOLD;
+
   const handleRefine = async () => {
     if (readyCount === 0) return;
 
     setError(null);
-    
-    // #region agent log
-    _dbgLog('RefineActionBar:handleRefine', 'START', {featureId, hypothesisId: 'F'});
-    // #endregion
 
     try {
       const response = await refineMutation.mutateAsync({
         feature_id: featureId,
       });
-      
-      // #region agent log
-      _dbgLog('RefineActionBar:handleRefine', 'mutateAsync resolved', {testCasesCount: response.test_cases?.length, hypothesisId: 'F'});
-      // #endregion
-      
+      setLocalRefinementCount(response.refinement_count ?? localRefinementCount + 1);
       onRefinementComplete(response);
-      
-      // #region agent log
-      _dbgLog('RefineActionBar:handleRefine', 'onRefinementComplete called', {hypothesisId: 'F'});
-      // #endregion
     } catch (err) {
-      // #region agent log
-      _dbgLog('RefineActionBar:handleRefine', 'ERROR', {error: String(err), hypothesisId: 'F'});
-      // #endregion
       setError(err instanceof Error ? err.message : 'Refinement failed');
     }
   };
@@ -102,9 +76,9 @@ export function RefineActionBar({ featureId, testCases, onRefinementComplete }: 
 
       {/* Floating Action Bar */}
       <div className={cn(
-        'fixed bottom-6 left-1/2 -translate-x-1/2 z-40',
-        'bg-card border border-border rounded-2xl shadow-2xl shadow-black/50',
-        'px-6 py-4 flex items-center gap-4',
+        'fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-40',
+        'max-w-[calc(100vw-2rem)] bg-card border border-border rounded-2xl shadow-2xl shadow-black/50',
+        'px-4 py-3 sm:px-6 sm:py-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4',
         'animate-in slide-in-from-bottom-4 duration-300'
       )}>
         {error && (
@@ -112,7 +86,14 @@ export function RefineActionBar({ featureId, testCases, onRefinementComplete }: 
             {error}
           </div>
         )}
-        
+
+        {showWarning && (
+          <div className="flex items-center gap-2 text-sm text-amber-400">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>Consider reviewing before refining further</span>
+          </div>
+        )}
+
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <div className="h-3 w-3 rounded-full bg-green-500 animate-pulse" />
@@ -123,9 +104,14 @@ export function RefineActionBar({ featureId, testCases, onRefinementComplete }: 
               {readyCount} cases
             </Badge>
           </div>
+          {localRefinementCount > 0 && (
+            <Badge variant="outline" className="text-xs text-muted-foreground">
+              Refinement {localRefinementCount}
+            </Badge>
+          )}
         </div>
 
-        <div className="h-8 w-px bg-border" />
+        <div className="hidden sm:block h-8 w-px bg-border" />
 
         <Button
           onClick={handleRefine}

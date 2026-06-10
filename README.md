@@ -35,6 +35,9 @@ source venv/bin/activate
 # Install dependencies
 pip install -r requirements.txt
 
+# Set up environment (defaults work out of the box with mock LLM)
+cp .env.example .env
+
 # Run the server
 uvicorn main:app --reload --port 8000
 ```
@@ -51,6 +54,9 @@ cd frontend
 
 # Install dependencies
 npm install
+
+# Set up environment
+cp .env.local.example .env.local
 
 # Run the development server
 npm run dev
@@ -78,17 +84,30 @@ DATABASE_URL=sqlite:///./qa_craft.db
 
 > **Note:** The app works out of the box with mock LLM responses. To use real AI generation, set `LLM_PROVIDER` to `openai` or `anthropic` and provide the corresponding API key.
 
+### Docker (POC mode)
+
+Alternative to running backend + frontend manually — boots both in mock-LLM mode:
+
+```bash
+docker compose -f docker-compose.dev.yml up --build
+```
+
+Backend at `http://localhost:8000`, frontend at `http://localhost:3000`. The root `docker-compose.yml` is a separate production compose (ports 8010/3010) used by the parent server.
+
 ## 4. Core Architecture & Data Model
 
 ### Entities
-- **Feature:** `id, title, description, raw_requirements, created_at`
+- **Feature:** `id, title, description, raw_requirements, created_at, generation_count, refinement_count`
 - **Template:** `id, name, system_instructions`
-- **TestCase:** `id, feature_id, title, steps, expected_result, is_edge_case (bool), status (draft/accepted/rejected)`
+- **TestCase:** `id, feature_id, title, steps, expected_result, is_edge_case (bool), is_manual (bool), refinement_notes, status (draft/accepted/rejected)`
+- **FeatureLink:** bidirectional relationship between features
+- **TestCaseLink:** reference from one feature to another feature's test case
 
 ### Workflow Logic
-1. **Initial Generation:** LLM parses `raw_requirements` + `Template` -> Returns `List[TestCase]`.
-2. **Curation:** User updates `TestCase.status` via UI.
-3. **Refinement:** Sends `raw_requirements` + `List[Accepted TestCases]` -> LLM returns a polished, finalized suite including new "Edge Cases."
+1. **Initial Generation:** LLM parses `raw_requirements` + `Template` → Returns `List[TestCase]` (configurable `target_count`, default 10). Duplicate generation returns 409 unless `force_regenerate=true`.
+2. **Curation:** User updates `TestCase.status` via UI (accept/reject/reset).
+3. **Refinement:** Sends `raw_requirements` + `List[Accepted TestCases]` → LLM returns new edge cases (configurable `max_new_cases`, default 5). UI warns after 3 refinement iterations.
+4. **Export:** Finalized test suite exported as JSON or CSV.
 
 ## 5. API Endpoints
 

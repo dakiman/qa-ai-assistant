@@ -28,12 +28,12 @@ async def verify_api_key(api_key: str | None = Security(api_key_header)) -> str:
         HTTPException: 401 if API key is invalid or missing
     """
     settings = get_settings()
-    
-    # Skip auth in development if no API key is configured
-    if settings.environment == "development" and not settings.api_key:
-        logger.debug("Auth skipped: development mode with no API key configured")
+
+    # Skip auth if no API key is configured
+    if not settings.api_key:
+        logger.debug("Auth skipped: no API key configured")
         return "dev-mode"
-    
+
     # Validate the API key
     if not api_key:
         logger.warning("API request rejected: missing API key")

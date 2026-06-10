@@ -49,7 +49,9 @@ class Feature(FeatureBase, table=True):
     """Feature database model."""
     id: Optional[int] = Field(default=None, primary_key=True)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    
+    generation_count: int = Field(default=0)
+    refinement_count: int = Field(default=0)
+
     # Relationships
     test_cases: list["TestCase"] = Relationship(back_populates="feature")
 
@@ -63,6 +65,8 @@ class FeatureRead(FeatureBase):
     """Schema for reading a Feature."""
     id: int
     created_at: datetime
+    generation_count: int = 0
+    refinement_count: int = 0
 
 
 class FeatureUpdate(SQLModel):
@@ -278,6 +282,8 @@ class GenerateRequest(SQLModel):
     feature_id: int
     template_id: Optional[int] = None
     skip_llm_validation: bool = False
+    target_count: int = Field(default=10, ge=3, le=30)
+    force_regenerate: bool = False
 
 
 class GenerateResponse(SQLModel):
@@ -293,6 +299,7 @@ class RefinementRequest(SQLModel):
     """Request schema for test suite refinement."""
     feature_id: int
     template_id: Optional[int] = None
+    max_new_cases: int = Field(default=5, ge=1, le=15)
 
 
 class RefinementResponse(SQLModel):
@@ -301,6 +308,7 @@ class RefinementResponse(SQLModel):
     original_count: int
     new_count: int
     edge_cases_added: int
+    refinement_count: int = 0
     test_cases: list[TestCaseRead]
     message: str
 

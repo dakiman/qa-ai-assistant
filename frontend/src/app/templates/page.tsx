@@ -123,7 +123,7 @@ export default function TemplatesPage() {
                 </ScrollArea>
                 
                 {/* Action Buttons */}
-                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex gap-2">
                   <Button asChild variant="outline" size="sm" className="flex-1">
                     <Link href={`/templates/${template.id}`}>
                       <Pencil className="w-3.5 h-3.5 mr-1.5" />

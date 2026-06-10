@@ -410,6 +410,16 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Generation Count
+             * @default 0
+             */
+            generation_count?: number;
+            /**
+             * Refinement Count
+             * @default 0
+             */
+            refinement_count?: number;
         };
         /**
          * FeatureUpdate
@@ -432,6 +442,16 @@ export interface components {
             feature_id: number;
             /** Template Id */
             template_id?: number | null;
+            /**
+             * Target Count
+             * @default 10
+             */
+            target_count?: number;
+            /**
+             * Force Regenerate
+             * @default false
+             */
+            force_regenerate?: boolean;
         };
         /**
          * GenerateResponse
@@ -459,6 +479,11 @@ export interface components {
             feature_id: number;
             /** Template Id */
             template_id?: number | null;
+            /**
+             * Max New Cases
+             * @default 5
+             */
+            max_new_cases?: number;
         };
         /**
          * RefinementResponse
@@ -473,6 +498,11 @@ export interface components {
             new_count: number;
             /** Edge Cases Added */
             edge_cases_added: number;
+            /**
+             * Refinement Count
+             * @default 0
+             */
+            refinement_count?: number;
             /** Test Cases */
             test_cases: components["schemas"]["TestCaseRead"][];
             /** Message */

@@ -29,6 +29,8 @@ A software feature or requirement to be tested. Contains:
 - Title and description
 - Raw requirements text (input for AI)
 - Associated test cases
+- `generation_count` — tracks how many times test cases were generated
+- `refinement_count` — tracks how many refinement iterations were performed
 
 ### Test Case
 A single test case with:
@@ -48,12 +50,14 @@ Customizable system prompts for AI generation:
 
 ### Workflow
 1. User creates a Feature with requirements
-2. AI generates initial test cases (DRAFT status)
+2. AI generates initial test cases (DRAFT status, `target_count` configurable, default 10)
+   - Re-generating requires `force_regenerate=true` (otherwise 409 Conflict)
 3. User curates: Accept, Reject, or add Manual cases
-4. User triggers Refinement to find gaps
+4. User triggers Refinement to find gaps (`max_new_cases` configurable, default 5)
+   - Refinement counter shown in UI; warning after 3 iterations
 5. AI analyzes accepted cases and adds edge cases
 6. User curates new suggestions
-7. Export finalized test suite
+7. Export finalized test suite (JSON or CSV)
 
 ## Directory Structure
 
@@ -66,8 +70,8 @@ qa-ai-tool/
 │   ├── models.py         # All SQLModel entities
 │   ├── routers/          # HTTP route handlers
 │   ├── services/         # Business logic (LLM)
-│   ├── repositories/     # Data access layer (TODO)
-│   └── tests/            # Pytest tests (TODO)
+│   ├── repositories/     # Data access layer
+│   └── tests/            # Pytest tests (not yet created)
 ├── frontend/
 │   ├── src/
 │   │   ├── app/          # Next.js pages
@@ -92,12 +96,15 @@ qa-ai-tool/
 | PATCH | /api/v1/features/{id} | Update feature |
 | DELETE | /api/v1/features/{id} | Delete feature |
 | GET | /api/v1/features/{id}/stats | Get test case stats |
-| POST | /api/v1/features/{id}/refine | Trigger AI refinement |
-| POST | /api/v1/generate | Generate test cases |
+| POST | /api/v1/features/{id}/refine | Trigger AI refinement (max_new_cases configurable) |
+| POST | /api/v1/generate | Generate test cases (409 if already generated; use force_regenerate) |
+| GET | /api/v1/generate/feature/{id}/test-cases | Get test cases for a feature (with filters) |
 | GET | /api/v1/test-cases/{id} | Get test case |
 | PATCH | /api/v1/test-cases/{id} | Update test case |
 | POST | /api/v1/test-cases/{id}/accept | Accept test case |
 | POST | /api/v1/test-cases/{id}/reject | Reject test case |
+| GET | /api/v1/features/{id}/export | Export test cases (JSON/CSV) |
+| GET | /api/v1/features/{id}/links | Get feature links |
 | GET | /api/v1/templates | List templates |
 
 ## Current State & Known Issues

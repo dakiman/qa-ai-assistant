@@ -1,19 +1,5 @@
 """Main FastAPI application for QA-Craft."""
 
-# #region agent log
-import json as _json_dbg
-from datetime import datetime as _dt_dbg
-_DBG_LOG_PATH = r"C:\Users\User\Projects\qa-ai-tool\debug-a8936c.log"
-def _dbg_log(location: str, message: str, data: dict = None):
-    try:
-        with open(_DBG_LOG_PATH, "a", encoding="utf-8") as f:
-            f.write(_json_dbg.dumps({"sessionId": "a8936c", "location": location, "message": message, "data": data or {}, "timestamp": _dt_dbg.now().isoformat()}) + "\n")
-    except Exception as e:
-        print(f"DBG LOG ERROR: {e}", flush=True)
-_dbg_log("main.py:module", "Main module loading", {"log_path": _DBG_LOG_PATH, "hypothesisId": "test"})
-print(f"DBG: main.py loaded, log path: {_DBG_LOG_PATH}", flush=True)
-# #endregion
-
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -73,29 +59,6 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan
 )
-
-# #region agent log
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request as StarletteRequest
-
-class DebugRequestMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: StarletteRequest, call_next):
-        _dbg_log("main.py:middleware", "Request received", {
-            "method": request.method,
-            "path": str(request.url.path),
-            "hypothesisId": "D"
-        })
-        response = await call_next(request)
-        _dbg_log("main.py:middleware", "Response completed", {
-            "method": request.method,
-            "path": str(request.url.path),
-            "status": response.status_code,
-            "hypothesisId": "D"
-        })
-        return response
-
-app.add_middleware(DebugRequestMiddleware)
-# #endregion
 
 # Add request ID middleware for tracing (must be added before CORS)
 app.add_middleware(RequestIdMiddleware)
