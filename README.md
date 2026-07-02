@@ -69,20 +69,29 @@ The frontend will be available at `http://localhost:3000`
 Create a `.env` file in the `backend/` directory:
 
 ```env
-# LLM Provider: "openai", "anthropic", or "mock"
+# LLM Provider: "mock", "openai", "anthropic", or "openrouter"
 LLM_PROVIDER=mock
 
-# OpenAI API Key (optional - will use mock if not provided)
+# OpenAI API Key (required if LLM_PROVIDER=openai)
 OPENAI_API_KEY=your_openai_api_key_here
 
-# Anthropic API Key (optional - alternative to OpenAI)
+# Anthropic API Key (required if LLM_PROVIDER=anthropic)
 ANTHROPIC_API_KEY=your_anthropic_api_key_here
+
+# OpenRouter API Key (required if LLM_PROVIDER=openrouter)
+OPENROUTER_API_KEY=your_openrouter_api_key_here
 
 # Database URL
 DATABASE_URL=sqlite:///./qa_craft.db
 ```
 
-> **Note:** The app works out of the box with mock LLM responses. To use real AI generation, set `LLM_PROVIDER` to `openai` or `anthropic` and provide the corresponding API key.
+> **Note:** The app works out of the box with mock LLM responses. To use real AI generation, set `LLM_PROVIDER` to `openai`, `anthropic`, or `openrouter` and provide the corresponding API key. If a real provider is selected without its key, requests now fail loudly (503) instead of silently returning mock data.
+
+For the **Dockerized frontend**, the only env var that matters is `BACKEND_URL`
+(default `http://localhost:8000`) — where the Next.js proxy at
+`src/app/api/v1/[...path]/route.ts` forwards API calls (the deployment sets it to
+`http://qa-ai-assistant-api:8000`). The proxy also injects the server-only
+`API_KEY` as `X-API-Key`, so no key is ever shipped in the browser bundle.
 
 ### Docker
 

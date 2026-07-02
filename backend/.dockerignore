@@ -4,3 +4,13 @@ __pycache__
 .env
 .env.*
 *.db
+*.db-journal
+*.db-wal
+*.db-shm
+# Never bake a host-built virtualenv into the image (COPY . . would otherwise
+# pull in hundreds of MB of platform-specific packages).
+venv/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
