@@ -196,7 +196,9 @@ Mark edge cases with is_edge_case=True."""
                 raise LLMConfigurationError(f"Unknown LLM provider: {self.provider}")
 
             logger.info("Generated %d test cases via LLM", len(response.test_cases))
-            return response.test_cases
+            # Enforce the requested cap — the LLM only gets target_count as soft
+            # prompt guidance and may return more.
+            return response.test_cases[:target_count]
             
         except (OpenAIError, AnthropicAPIError) as e:
             logger.error("LLM API error during test case generation: %s", e, exc_info=True)
@@ -319,7 +321,8 @@ For each new test case:
                 raise LLMConfigurationError(f"Unknown LLM provider: {self.provider}")
 
             logger.info("Generated %d refinement cases via LLM", len(response.test_cases))
-            return response.test_cases
+            # Enforce the requested cap — max_new_cases is only soft prompt guidance.
+            return response.test_cases[:max_new_cases]
             
         except (OpenAIError, AnthropicAPIError) as e:
             logger.error("LLM API error during test suite refinement: %s", e, exc_info=True)

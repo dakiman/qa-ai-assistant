@@ -27,7 +27,11 @@ class FeatureRepository(BaseRepository[Feature]):
         Returns:
             Updated feature
         """
-        update_dict = update_data.model_dump(exclude_unset=True)
+        # skip_llm_validation is a request-only flag, not a Feature column —
+        # setattr'ing it onto the ORM instance raises ValueError.
+        update_dict = update_data.model_dump(
+            exclude={"skip_llm_validation"}, exclude_unset=True
+        )
         for key, value in update_dict.items():
             setattr(feature, key, value)
         

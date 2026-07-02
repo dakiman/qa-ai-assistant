@@ -23,18 +23,19 @@ class Settings(BaseSettings):
     # LLM Provider: "openai", "anthropic", "openrouter", or "mock"
     llm_provider: str = "mock"
 
-    # LLM Model Selection
-    openai_model: str = "gpt-4-turbo"
-    anthropic_model: str = "claude-3-sonnet-20240229"
-    openrouter_model: str = "openrouter/free"
+    # LLM Model Selection (current, non-retired IDs)
+    openai_model: str = "gpt-4o"
+    anthropic_model: str = "claude-sonnet-5"
+    # Must be a real OpenRouter slug that supports tool calling (instructor needs it).
+    openrouter_model: str = "meta-llama/llama-3.3-70b-instruct:free"
 
-    # Validation (pre-LLM requirements quality gate)
+    # Validation (pre-LLM requirements quality gate) — cheap/fast models
     validation_enabled: bool = True
     validation_min_words: int = 5
     validation_min_chars: int = 30
     openai_validation_model: str = "gpt-4o-mini"
-    anthropic_validation_model: str = "claude-3-haiku-20240307"
-    openrouter_validation_model: str = "openrouter/free"
+    anthropic_validation_model: str = "claude-haiku-4-5"
+    openrouter_validation_model: str = "meta-llama/llama-3.3-70b-instruct:free"
     
     # API Settings
     api_v1_prefix: str = "/api/v1"

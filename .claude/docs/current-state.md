@@ -41,8 +41,8 @@ Last assessed: 2026-04-28
 - React Query caching (5 min stale, 30 min gc)
 
 ### Real LLM Mode (if API key provided)
-- OpenAI (gpt-4-turbo-preview) via instructor
-- Anthropic (claude-3-sonnet-20240229) via instructor
+- OpenAI (gpt-4o) via instructor
+- Anthropic (claude-sonnet-5) via instructor
 - Structured Pydantic response enforcement with auto-retry (max 2)
 - Prompt injection detection + logging
 
@@ -82,8 +82,7 @@ Both `backend/.env.example` and `frontend/.env.local.example` exist and are trac
 | Rate limiting | `slowapi` not installed; no rate limits on LLM endpoints |
 | No tests | `backend/tests/` directory does not exist |
 | No docker-compose | No container setup for QA-Craft itself (only parent server has docker-compose) |
-| LLM model versions | `openai_model` defaults to `gpt-4-turbo-preview` (deprecated name); should use `gpt-4-turbo` |
-| Anthropic model | `anthropic_model` defaults to `claude-3-sonnet-20240229`; newer versions available |
+| ~~LLM model versions~~ | RESOLVED — defaults updated to current IDs (`gpt-4o`, `claude-sonnet-5`; validation `gpt-4o-mini`, `claude-haiku-4-5`) |
 
 ---
 

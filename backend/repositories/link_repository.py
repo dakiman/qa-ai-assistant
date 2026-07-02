@@ -266,6 +266,48 @@ class LinkRepository:
         )
         return self.session.exec(statement).first() is not None
     
+    # ============== Cascade Cleanup ==============
+
+    def delete_all_for_feature(self, feature_id: int) -> None:
+        """
+        Delete every link that references a feature, in either direction.
+
+        Called before deleting a feature so no dangling link rows survive
+        (SQLite FK cascade is only enabled at runtime via PRAGMA, and it does
+        not cover feature-link rows where this feature is the *target*).
+
+        Removes:
+        - FeatureLink rows where the feature is source or target
+        - TestCaseLink rows owned by the feature
+        - TestCaseLink rows referencing any of the feature's own test cases
+        """
+        feature_links = self.session.exec(
+            select(FeatureLink).where(
+                (FeatureLink.source_feature_id == feature_id)
+                | (FeatureLink.target_feature_id == feature_id)
+            )
+        ).all()
+        for link in feature_links:
+            self.session.delete(link)
+
+        owned_tc_links = self.session.exec(
+            select(TestCaseLink).where(TestCaseLink.feature_id == feature_id)
+        ).all()
+        for link in owned_tc_links:
+            self.session.delete(link)
+
+        referencing_tc_links = self.session.exec(
+            select(TestCaseLink)
+            .join(TestCase, TestCase.id == TestCaseLink.test_case_id)
+            .where(TestCase.feature_id == feature_id)
+        ).all()
+        for link in referencing_tc_links:
+            self.session.delete(link)
+
+        self.session.commit()
+
+        logger.info("Deleted all links referencing feature %d", feature_id)
+
     # ============== Context Aggregation for LLM ==============
     
     def get_linked_context(

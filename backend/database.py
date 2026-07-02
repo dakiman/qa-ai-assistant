@@ -22,6 +22,7 @@ async operations become necessary, consider migrating to SQLAlchemy 2.0 async
 with asyncpg driver.
 """
 
+from sqlalchemy import event
 from sqlmodel import SQLModel, create_engine, Session
 from config import get_settings
 from logging_config import get_logger
@@ -29,13 +30,29 @@ from logging_config import get_logger
 settings = get_settings()
 logger = get_logger(__name__)
 
+# check_same_thread is a SQLite-only DBAPI argument — passing it to psycopg2
+# raises a TypeError, so gate it on the URL scheme. pool_pre_ping guards against
+# stale Postgres connections in long-lived deployments.
+_is_sqlite = settings.database_url.startswith("sqlite")
+_engine_kwargs: dict = {"echo": settings.db_echo}
+if _is_sqlite:
+    _engine_kwargs["connect_args"] = {"check_same_thread": False}
+else:
+    _engine_kwargs["pool_pre_ping"] = True
+
 # Create synchronous engine
 # Note: FastAPI runs sync dependencies in a thread pool, so this is safe for concurrency
-engine = create_engine(
-    settings.database_url,
-    echo=settings.db_echo,  # Configurable SQL query logging
-    connect_args={"check_same_thread": False}  # Needed for SQLite
-)
+engine = create_engine(settings.database_url, **_engine_kwargs)
+
+
+if _is_sqlite:
+    @event.listens_for(engine, "connect")
+    def _enable_sqlite_foreign_keys(dbapi_connection, connection_record):
+        """SQLite disables FK enforcement by default; turn it on per connection
+        so ON DELETE CASCADE on the link tables actually fires."""
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
 
 def init_db() -> None:

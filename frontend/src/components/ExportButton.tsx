@@ -10,10 +10,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Download, Loader2 } from 'lucide-react';
-import type { TestCaseStatus } from '@/lib/api';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001/api/v1';
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
+import { featureApi, type TestCaseStatus } from '@/lib/api';
 
 type ExportFormat = 'json' | 'csv';
 type StatusFilter = 'all' | TestCaseStatus;
@@ -30,40 +27,15 @@ export function ExportButton({ featureId, className }: ExportButtonProps) {
 
   const handleExport = async () => {
     setIsExporting(true);
-    
+
     try {
-      // Build URL with query params
-      const params = new URLSearchParams();
-      params.set('format', format);
-      if (statusFilter !== 'all') {
-        params.set('status', statusFilter);
-      }
-      
-      const url = `${API_BASE_URL}/features/${featureId}/export?${params.toString()}`;
-      
-      const headers: HeadersInit = {};
-      if (API_KEY) {
-        headers['X-API-Key'] = API_KEY;
-      }
-      
-      const response = await fetch(url, { headers });
-      
-      if (!response.ok) {
-        throw new Error('Export failed');
-      }
-      
-      // Get filename from Content-Disposition header or generate one
-      const contentDisposition = response.headers.get('Content-Disposition');
-      let filename = `feature_${featureId}_test_cases.${format}`;
-      if (contentDisposition) {
-        const match = contentDisposition.match(/filename="?([^"]+)"?/);
-        if (match) {
-          filename = match[1];
-        }
-      }
-      
-      // Download the file
-      const blob = await response.blob();
+      const { blob, filename } = await featureApi.export(
+        featureId,
+        format,
+        statusFilter === 'all' ? undefined : statusFilter,
+      );
+
+      // Trigger the browser download
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;

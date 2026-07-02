@@ -7,23 +7,22 @@
 
 import type { components } from './api-types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
+// Relative base by default so browser requests go through the Next.js proxy
+// (src/app/api/v1/[...path]/route.ts), which injects the server-only API key.
+// The write key is never shipped in the client bundle.
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
 
 /**
- * Get headers for API requests
+ * Get headers for API requests. Auth is added server-side by the proxy — do not
+ * read a public API key here.
  */
 function getHeaders(includeContentType = false): HeadersInit {
   const headers: HeadersInit = {};
-  
-  if (API_KEY) {
-    headers['X-API-Key'] = API_KEY;
-  }
-  
+
   if (includeContentType) {
     headers['Content-Type'] = 'application/json';
   }
-  
+
   return headers;
 }
 
@@ -242,6 +241,37 @@ export const featureApi = {
       headers: getHeaders(),
     });
     return handleResponse<FeatureStats>(response);
+  },
+
+  async export(
+    featureId: number,
+    format: 'json' | 'csv',
+    status?: TestCaseStatus,
+  ): Promise<{ blob: Blob; filename: string }> {
+    const params = new URLSearchParams();
+    params.set('format', format);
+    if (status) {
+      params.set('status', status);
+    }
+    const response = await fetch(
+      `${API_BASE_URL}/features/${featureId}/export?${params.toString()}`,
+      { headers: getHeaders() },
+    );
+    if (!response.ok) {
+      throw new APIError(response.status, 'Export failed');
+    }
+    // Prefer the server-provided filename (Content-Disposition), fall back to a
+    // sensible default. Reachable now that the request is same-origin via the proxy.
+    let filename = `feature_${featureId}_test_cases.${format}`;
+    const contentDisposition = response.headers.get('Content-Disposition');
+    if (contentDisposition) {
+      const match = contentDisposition.match(/filename="?([^"]+)"?/);
+      if (match) {
+        filename = match[1];
+      }
+    }
+    const blob = await response.blob();
+    return { blob, filename };
   },
 };
 
