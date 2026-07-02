@@ -277,15 +277,6 @@ export function useAcceptTestCase() {
 
   return useMutation({
     mutationFn: testCaseApi.accept,
-    onMutate: async (testCaseId) => {
-      // Cancel outgoing refetches
-      await queryClient.cancelQueries({
-        queryKey: queryKeys.testCases.detail(testCaseId),
-      });
-
-      // Return context for rollback
-      return { testCaseId };
-    },
     onSuccess: (updatedTestCase) => {
       // Update test case in cache
       queryClient.setQueryData(
@@ -351,6 +342,10 @@ export function useGenerateTestCases() {
       queryClient.invalidateQueries({
         queryKey: queryKeys.features.testCases(variables.feature_id),
       });
+      // Also refresh the feature itself so the generation_count badge updates (M14).
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.features.detail(variables.feature_id),
+      });
     },
   });
 }
@@ -372,6 +367,11 @@ export function useRefineTestSuite() {
       // Invalidate to ensure we get fresh data
       queryClient.invalidateQueries({
         queryKey: queryKeys.features.testCases(variables.feature_id),
+      });
+      // Refresh the feature so the refinement_count badge and the ≥3-refinement
+      // warning reflect the increment (M14).
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.features.detail(variables.feature_id),
       });
     },
   });

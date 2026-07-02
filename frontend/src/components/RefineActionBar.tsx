@@ -19,7 +19,6 @@ interface RefineActionBarProps {
 
 export function RefineActionBar({ featureId, testCases, refinementCount, onRefinementComplete }: RefineActionBarProps) {
   const [error, setError] = useState<string | null>(null);
-  const [localRefinementCount, setLocalRefinementCount] = useState(refinementCount);
 
   // Mutation
   const refineMutation = useRefineTestSuite();
@@ -29,7 +28,10 @@ export function RefineActionBar({ featureId, testCases, refinementCount, onRefin
     tc => tc.status === 'accepted' || tc.is_manual
   ).length;
 
-  const showWarning = localRefinementCount >= REFINEMENT_WARNING_THRESHOLD;
+  // Derive directly from the prop. After a refine, the mutation invalidates the
+  // feature detail query, the parent refetches, and this prop updates — copying
+  // it into state (the old approach) went stale on navigate-away/back (M15).
+  const showWarning = refinementCount >= REFINEMENT_WARNING_THRESHOLD;
 
   const handleRefine = async () => {
     if (readyCount === 0) return;
@@ -40,7 +42,6 @@ export function RefineActionBar({ featureId, testCases, refinementCount, onRefin
       const response = await refineMutation.mutateAsync({
         feature_id: featureId,
       });
-      setLocalRefinementCount(response.refinement_count ?? localRefinementCount + 1);
       onRefinementComplete(response);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Refinement failed');
@@ -104,9 +105,9 @@ export function RefineActionBar({ featureId, testCases, refinementCount, onRefin
               {readyCount} cases
             </Badge>
           </div>
-          {localRefinementCount > 0 && (
+          {refinementCount > 0 && (
             <Badge variant="outline" className="text-xs text-muted-foreground">
-              Refinement {localRefinementCount}
+              Refinement {refinementCount}
             </Badge>
           )}
         </div>
