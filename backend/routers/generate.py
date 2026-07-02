@@ -1,8 +1,10 @@
 """Test case generation endpoints."""
 
 from fastapi import APIRouter, Depends, status
+from sqlmodel import Session
 
 from auth import verify_api_key, verify_api_key_optional
+from database import get_session
 from exceptions import ResourceNotFoundError, ResourceConflictError
 from models import (
     GenerateRequest,
@@ -29,15 +31,16 @@ def generate_test_cases(
     link_repo: LinkRepository = Depends(get_link_repository),
     llm_service: LLMService = Depends(get_llm_service),
     validation_service: ValidationService = Depends(get_validation_service),
+    session: Session = Depends(get_session),
     _: str = Depends(verify_api_key)
 ) -> GenerateResponse:
     """
     Generate test cases for a feature using AI.
-    
+
     Uses the LLM service (with instructor) to generate structured test cases
     from the feature's requirements. Optionally uses a template for custom
     system instructions.
-    
+
     If the feature has linked features or test cases, their context is included
     in the LLM prompt for more informed test case generation.
     """
@@ -46,8 +49,10 @@ def generate_test_cases(
     if not feature:
         raise ResourceNotFoundError("Feature", request.feature_id)
 
-    # Guard: prevent accidental re-generation
-    if feature.generation_count > 0 and not request.force_regenerate:
+    # Fast pre-check to avoid LLM cost on an obvious re-generate. The
+    # authoritative, race-free guard is the atomic claim below.
+    already_generated = feature.generation_count > 0
+    if already_generated and not request.force_regenerate:
         raise ResourceConflictError(
             "Test cases have already been generated for this feature. "
             "Set force_regenerate=true to delete existing drafts and regenerate."
@@ -76,7 +81,7 @@ def generate_test_cases(
         linked_test_cases=linked_context_data.linked_test_cases
     )
 
-    # Generate test cases using LLM with linked context
+    # Generate test cases using LLM with linked context (no DB writes yet).
     test_case_drafts = llm_service.generate_initial_test_cases(
         requirements=feature.raw_requirements,
         template_content=template_content,
@@ -84,11 +89,25 @@ def generate_test_cases(
         target_count=request.target_count
     )
 
-    # Only now that new drafts are in hand, swap out the old ones.
-    if request.force_regenerate and feature.generation_count > 0:
-        test_case_repo.delete_drafts(feature.id)
+    # --- Single transaction: claim + swap drafts + insert + counter ---
+    # Everything below is deferred (commit=False) and committed once at the end,
+    # so a partial failure never leaves drafts persisted with a stale counter
+    # (which used to cause a second suite to be appended on the next generate).
+    if not request.force_regenerate:
+        # Race-free guard: only one concurrent initial-generate wins the 0->1
+        # claim. The loser did the (wasted) LLM call but must not double-insert.
+        if not feature_repo.claim_initial_generation(feature.id):
+            session.rollback()
+            raise ResourceConflictError(
+                "Test cases have already been generated for this feature. "
+                "Set force_regenerate=true to delete existing drafts and regenerate."
+            )
+    else:
+        # Force path: swap the old AI drafts for the new suite and bump counter.
+        if already_generated:
+            test_case_repo.delete_drafts(feature.id, commit=False)
+        feature_repo.increment_generation_count(feature, commit=False)
 
-    # Save generated test cases to database
     saved_count = 0
     for draft in test_case_drafts:
         test_case_repo.create_from_draft(
@@ -97,12 +116,12 @@ def generate_test_cases(
             steps=draft.steps,
             expected_result=draft.expected_result,
             is_edge_case=draft.is_edge_case,
-            status=TestCaseStatus.DRAFT
+            status=TestCaseStatus.DRAFT,
+            commit=False,
         )
         saved_count += 1
 
-    # Increment generation counter
-    feature_repo.increment_generation_count(feature)
+    session.commit()
 
     response = GenerateResponse(
         feature_id=feature.id,

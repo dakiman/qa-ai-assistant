@@ -67,3 +67,9 @@ def downgrade() -> None:
     op.drop_table('template')
     op.drop_index(op.f('ix_feature_title'), table_name='feature')
     op.drop_table('feature')
+    # On Postgres the enum type outlives the table it was created for; drop it so
+    # a downgrade→upgrade cycle doesn't fail with DuplicateObject. SQLite has no
+    # enum types, so this is a Postgres-only step.
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        op.execute("DROP TYPE IF EXISTS testcasestatus")

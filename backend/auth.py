@@ -1,5 +1,7 @@
 """API Key authentication for QA-Craft."""
 
+import secrets
+
 from fastapi import HTTPException, Security, status
 from fastapi.security import APIKeyHeader
 
@@ -43,7 +45,9 @@ async def verify_api_key(api_key: str | None = Security(api_key_header)) -> str:
             headers={"WWW-Authenticate": "ApiKey"},
         )
     
-    if api_key != settings.api_key:
+    # Constant-time comparison avoids leaking the key via response timing on a
+    # LAN/Tailscale-exposed write API.
+    if not secrets.compare_digest(api_key, settings.api_key):
         logger.warning("API request rejected: invalid API key")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

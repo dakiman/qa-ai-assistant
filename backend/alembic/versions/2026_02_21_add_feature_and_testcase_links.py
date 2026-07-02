@@ -87,9 +87,12 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_feature_link_target_feature_id'), table_name='feature_link')
     op.drop_index(op.f('ix_feature_link_source_feature_id'), table_name='feature_link')
     op.drop_table('feature_link')
-    
-    # Drop the enum type
-    op.execute('DROP TYPE IF EXISTS featurelinktype')
+
+    # Drop the enum type — Postgres only. `DROP TYPE` is not valid SQLite SQL and
+    # would abort the downgrade mid-way.
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        op.execute('DROP TYPE IF EXISTS featurelinktype')
 
 
 

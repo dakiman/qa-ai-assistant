@@ -2,11 +2,15 @@
 
 from typing import Optional, Sequence
 from fastapi import Depends
+from sqlalchemy import update
 from sqlmodel import Session, select
 
 from database import get_session
 from models import Feature, FeatureUpdate
-from repositories.base import BaseRepository
+from repositories.base import BaseRepository, reject_null_fields
+
+# Feature columns that are NOT NULL (description is nullable).
+_FEATURE_NON_NULLABLE = {"title", "raw_requirements"}
 
 
 class FeatureRepository(BaseRepository[Feature]):
@@ -32,6 +36,7 @@ class FeatureRepository(BaseRepository[Feature]):
         update_dict = update_data.model_dump(
             exclude={"skip_llm_validation"}, exclude_unset=True
         )
+        reject_null_fields(update_dict, _FEATURE_NON_NULLABLE)
         for key, value in update_dict.items():
             setattr(feature, key, value)
         
@@ -40,20 +45,45 @@ class FeatureRepository(BaseRepository[Feature]):
         self.session.refresh(feature)
         return feature
     
-    def increment_generation_count(self, feature: Feature) -> Feature:
-        """Increment the generation counter and commit."""
+    def claim_initial_generation(self, feature_id: int) -> bool:
+        """Atomically claim the first generation for a feature.
+
+        Runs ``UPDATE feature SET generation_count = 1 WHERE id = ? AND
+        generation_count = 0`` and reports whether a row was affected. Two
+        concurrent (or double-clicked) initial-generate requests both pass the
+        earlier ``generation_count > 0`` pre-check, but only one wins this
+        conditional update — the loser gets rowcount 0 and can be rejected,
+        preventing a duplicate suite. Does not commit; the caller commits the
+        whole generate transaction once.
+        """
+        result = self.session.execute(
+            update(Feature)
+            .where(Feature.id == feature_id, Feature.generation_count == 0)
+            .values(generation_count=1)
+            .execution_options(synchronize_session=False)
+        )
+        return result.rowcount == 1
+
+    def increment_generation_count(self, feature: Feature, commit: bool = True) -> Feature:
+        """Increment the generation counter. Set commit=False to defer to the caller."""
         feature.generation_count += 1
         self.session.add(feature)
-        self.session.commit()
-        self.session.refresh(feature)
+        if commit:
+            self.session.commit()
+            self.session.refresh(feature)
+        else:
+            self.session.flush()
         return feature
 
-    def increment_refinement_count(self, feature: Feature) -> Feature:
-        """Increment the refinement counter and commit."""
+    def increment_refinement_count(self, feature: Feature, commit: bool = True) -> Feature:
+        """Increment the refinement counter. Set commit=False to defer to the caller."""
         feature.refinement_count += 1
         self.session.add(feature)
-        self.session.commit()
-        self.session.refresh(feature)
+        if commit:
+            self.session.commit()
+            self.session.refresh(feature)
+        else:
+            self.session.flush()
         return feature
 
     def get_with_test_cases(self, id: int) -> Optional[Feature]:

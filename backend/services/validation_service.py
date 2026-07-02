@@ -24,7 +24,11 @@ from openai import OpenAI, OpenAIError
 from pydantic import BaseModel
 
 from config import get_settings
-from exceptions import RequirementsValidationException, LLMServiceError
+from exceptions import (
+    LLMConfigurationError,
+    LLMServiceError,
+    RequirementsValidationException,
+)
 from logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -159,13 +163,18 @@ class ValidationService:
             logger.info("LLM semantic validation skipped by request flag")
             return
 
-        if self.settings.llm_provider == "mock" or self.client is None:
-            logger.debug(
-                "Skipping LLM validation (provider=%s, client=%s)",
-                self.settings.llm_provider,
-                "none" if self.client is None else "present",
-            )
+        if self.settings.llm_provider == "mock":
+            logger.debug("Skipping LLM validation (provider=mock)")
             return
+        if self.client is None:
+            # A real provider is selected but the client could not be built —
+            # missing API key or an unknown provider name. Fail loudly rather
+            # than silently letting unvalidated requirements through.
+            raise LLMConfigurationError(
+                f"LLM provider '{self.settings.llm_provider}' is selected but not "
+                "configured (missing API key or unknown provider). Set the "
+                "corresponding API key or use LLM_PROVIDER=mock."
+            )
 
         result = self._llm_validate(text)
         if not result.is_valid:

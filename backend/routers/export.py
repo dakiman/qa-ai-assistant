@@ -24,6 +24,24 @@ class ExportFormat(str, Enum):
 router = APIRouter(prefix="/features", tags=["Export"])
 
 
+# Characters that trigger formula evaluation when a CSV cell is opened in
+# Excel/LibreOffice — the primary consumption path for exported test suites.
+_CSV_INJECTION_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _sanitize_csv_cell(value: object) -> object:
+    """Neutralize CSV/spreadsheet formula injection.
+
+    LLM- and user-authored fields (titles, steps, notes) are written verbatim,
+    so a payload like ``=HYPERLINK("http://evil","click")`` would execute on
+    open. Prefix a leading formula trigger with a single quote so the cell is
+    treated as text. Non-string values are returned unchanged.
+    """
+    if isinstance(value, str) and value.startswith(_CSV_INJECTION_PREFIXES):
+        return "'" + value
+    return value
+
+
 @router.get("/{feature_id}/export")
 def export_test_cases(
     feature_id: int,
@@ -125,13 +143,13 @@ def _export_csv(test_cases: list[TestCaseRead], filename: str) -> StreamingRespo
         
         writer.writerow([
             tc.id,
-            tc.title,
-            steps_text,
-            tc.expected_result,
+            _sanitize_csv_cell(tc.title),
+            _sanitize_csv_cell(steps_text),
+            _sanitize_csv_cell(tc.expected_result),
             "Yes" if tc.is_edge_case else "No",
             "Yes" if tc.is_manual else "No",
             status_value,
-            tc.refinement_notes or ""
+            _sanitize_csv_cell(tc.refinement_notes or "")
         ])
     
     # Get the CSV content

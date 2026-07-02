@@ -3,8 +3,24 @@
 from typing import Generic, TypeVar, Optional, Sequence
 from sqlmodel import Session, SQLModel, select
 
+from exceptions import ValidationError
+
 ModelType = TypeVar("ModelType", bound=SQLModel)
 UpdateSchemaType = TypeVar("UpdateSchemaType", bound=SQLModel)
+
+
+def reject_null_fields(update_dict: dict, non_nullable: set[str]) -> None:
+    """Raise a 400 if a PATCH explicitly sets a NOT NULL column to null.
+
+    ``{"steps": null}`` passes Pydantic (the update schemas make every field
+    Optional) but violates the DB NOT NULL constraint at commit, surfacing as a
+    500. Reject it up front as a client error instead (M8).
+    """
+    nulls = sorted(k for k in non_nullable if update_dict.get(k) is None and k in update_dict)
+    if nulls:
+        raise ValidationError(
+            f"These fields cannot be set to null: {', '.join(nulls)}"
+        )
 
 
 class BaseRepository(Generic[ModelType]):
@@ -41,29 +57,44 @@ class BaseRepository(Generic[ModelType]):
     def get_all(self, skip: int = 0, limit: int = 100) -> Sequence[ModelType]:
         """
         Get all entities with pagination.
-        
+
         Args:
             skip: Number of records to skip
             limit: Maximum number of records to return
-            
+
         Returns:
             Sequence of entities
         """
-        statement = select(self.model).offset(skip).limit(limit)
+        # Order by primary key for a stable, deterministic page order —
+        # without ORDER BY, row order is engine-dependent (notably on Postgres)
+        # and pages can overlap or skip rows between requests.
+        statement = (
+            select(self.model)
+            .order_by(self.model.id)
+            .offset(skip)
+            .limit(limit)
+        )
         return self.session.exec(statement).all()
     
-    def create(self, obj: ModelType) -> ModelType:
+    def create(self, obj: ModelType, commit: bool = True) -> ModelType:
         """
         Create a new entity.
-        
+
         Args:
             obj: Entity instance to create
-            
+            commit: When False, flush (to populate the PK) but leave the
+                transaction open so the caller can commit several writes
+                atomically. Defaults to True for standalone callers.
+
         Returns:
             Created entity with ID populated
         """
         self.session.add(obj)
-        self.session.commit()
+        if commit:
+            self.session.commit()
+        else:
+            # flush assigns the primary key without ending the transaction
+            self.session.flush()
         self.session.refresh(obj)
         return obj
     
