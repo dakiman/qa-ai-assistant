@@ -84,15 +84,23 @@ DATABASE_URL=sqlite:///./qa_craft.db
 
 > **Note:** The app works out of the box with mock LLM responses. To use real AI generation, set `LLM_PROVIDER` to `openai` or `anthropic` and provide the corresponding API key.
 
-### Docker (POC mode)
+### Docker
 
-Alternative to running backend + frontend manually — boots both in mock-LLM mode:
+There is **no compose file in this repo**. The app is deployed via a compose file
+maintained outside the repo at `/srv/dakis/apps/qa-ai-assistant/compose.yml`,
+which builds from this repo's `backend/` and `frontend/` directories and runs:
+
+- `qa-ai-assistant-api` — backend, host port **8010** → 8000
+- `qa-ai-assistant-web` — frontend, host port **3010** → 3000 (proxies to the api service via `BACKEND_URL`)
 
 ```bash
-docker compose -f docker-compose.dev.yml up --build
+# From the deployment dir on the server:
+cd /srv/dakis && sg docker -c 'docker compose up -d --build qa-ai-assistant-api qa-ai-assistant-web'
 ```
 
-Backend at `http://localhost:8000`, frontend at `http://localhost:3000`. The root `docker-compose.yml` is a separate production compose (ports 8010/3010) used by the parent server.
+Both images are baked at build time (no source bind-mount), so **code changes
+require a rebuild + recreate**. For local development, run the two services
+natively as shown above.
 
 ## 4. Core Architecture & Data Model
 

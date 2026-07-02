@@ -53,11 +53,9 @@ def generate_test_cases(
             "Set force_regenerate=true to delete existing drafts and regenerate."
         )
 
-    # If force regenerating, delete existing drafts first
-    if request.force_regenerate and feature.generation_count > 0:
-        test_case_repo.delete_drafts(feature.id)
-
     # Validate requirements quality before incurring any LLM cost.
+    # NOTE: existing drafts are deliberately NOT deleted yet — if validation
+    # raises 422 or the LLM errors below, the feature keeps its current drafts.
     validation_service.validate_requirements(
         feature.raw_requirements,
         skip_llm=request.skip_llm_validation,
@@ -85,6 +83,10 @@ def generate_test_cases(
         linked_context=linked_context if linked_context else None,
         target_count=request.target_count
     )
+
+    # Only now that new drafts are in hand, swap out the old ones.
+    if request.force_regenerate and feature.generation_count > 0:
+        test_case_repo.delete_drafts(feature.id)
 
     # Save generated test cases to database
     saved_count = 0

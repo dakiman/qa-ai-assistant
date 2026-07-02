@@ -68,7 +68,7 @@ export default function FeatureDetailPage() {
 
   // Fetch with filters
   const { feature, isLoading: featureLoading, error: featureError } = useFeatureDetail(featureId);
-  const { data: filteredTestCases = [], isLoading: testCasesLoading } = useFeatureTestCases(featureId, filters);
+  const { data: filteredTestCases = [] } = useFeatureTestCases(featureId, filters);
   
   // Also fetch unfiltered test cases for stats (only when filters are active)
   const hasActiveFilters = !!(filters.status || filters.is_edge_case || filters.is_manual || filters.search);
@@ -79,7 +79,9 @@ export default function FeatureDetailPage() {
   // Use filtered test cases for display, unfiltered for stats
   const testCases = filteredTestCases;
   const testCasesForStats = hasActiveFilters ? allTestCases : filteredTestCases;
-  const isLoading = featureLoading || testCasesLoading;
+  // Gate the full-page skeleton on the feature load only. Filtered test cases use
+  // keepPreviousData, so a filter change keeps the page (and search input) mounted.
+  const isLoading = featureLoading;
   const error = featureError;
 
   const handleTestCaseStatusChange = (updatedCase: TestCase) => {

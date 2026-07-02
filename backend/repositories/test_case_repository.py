@@ -174,9 +174,11 @@ class TestCaseRepository(BaseRepository[TestCase]):
     
     def delete_drafts(self, feature_id: int) -> int:
         """
-        Delete all DRAFT test cases for a feature.
+        Delete AI-generated DRAFT test cases for a feature.
 
-        Used when force-regenerating test cases.
+        Used when force-regenerating test cases. Manually added cases are also
+        created as DRAFT, so they are explicitly excluded here — regeneration
+        must never destroy the engineer's hand-written work.
 
         Args:
             feature_id: Feature ID whose drafts to delete
@@ -186,7 +188,8 @@ class TestCaseRepository(BaseRepository[TestCase]):
         """
         statement = select(TestCase).where(
             TestCase.feature_id == feature_id,
-            TestCase.status == TestCaseStatus.DRAFT
+            TestCase.status == TestCaseStatus.DRAFT,
+            TestCase.is_manual == False  # noqa: E712 — SQLAlchemy needs ==, not `is`
         )
         drafts = self.session.exec(statement).all()
         count = len(drafts)

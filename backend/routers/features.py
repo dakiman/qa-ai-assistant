@@ -12,6 +12,7 @@ from models import (
     FeatureUpdate
 )
 from repositories.feature_repository import FeatureRepository, get_feature_repository
+from repositories.link_repository import LinkRepository, get_link_repository
 from services.validation_service import ValidationService, get_validation_service
 
 router = APIRouter(prefix="/features", tags=["Features"])
@@ -79,12 +80,16 @@ def update_feature(
 
 @router.delete("/{feature_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_feature(
-    feature_id: int, 
+    feature_id: int,
     repo: FeatureRepository = Depends(get_feature_repository),
+    link_repo: LinkRepository = Depends(get_link_repository),
     _: str = Depends(verify_api_key)
 ) -> None:
-    """Delete a feature."""
+    """Delete a feature and everything that references it."""
     feature = repo.get(feature_id)
     if not feature:
         raise ResourceNotFoundError("Feature", feature_id)
+    # Remove dependent link rows first (no ORM relationship covers them);
+    # the feature's own test cases are cascade-deleted by the ORM relationship.
+    link_repo.delete_all_for_feature(feature_id)
     repo.delete(feature)

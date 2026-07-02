@@ -57,50 +57,49 @@ npm run dev
 
 ## Running with Docker (preferred on this server)
 
-The Tailscale-exposed env on this server runs from `docker-compose.yml` (production-style image build, no bind-mount). It is the default deploy target for browser-testing UI changes.
+There is **no compose file inside this repo.** The app is deployed via a compose
+file maintained outside the repo at **`/srv/dakis/apps/qa-ai-assistant/compose.yml`**,
+which builds from this repo's `backend/` and `frontend/` dirs. It is the default
+deploy target for browser-testing UI changes.
 
-### Compose files
+### Services (from the deployment compose)
 
-| File | Purpose | Frontend host port | Backend host port | Container names |
-|------|---------|--------------------|-------------------|-----------------|
-| `docker-compose.yml` | Production-like; what's running on this server / Tailscale | **3010** → 3000 | **8010** → 8000 | `qa-frontend`, `qa-backend` |
-| `docker-compose.dev.yml` | Local dev with backend hot-reload | 3000 → 3000 | 8000 → 8000 | `qa-craft-frontend-dev`, `qa-craft-backend-dev` |
-
-Both can coexist (different container names + ports).
+| Service | Container | Purpose | Host port → container |
+|---------|-----------|---------|-----------------------|
+| `qa-ai-assistant-api` | `qa-ai-assistant-api` | Backend (baked image, `AUTO_MIGRATE=true`, SQLite on a `/srv/dakis/data` bind mount) | **8010** → 8000 |
+| `qa-ai-assistant-web` | `qa-ai-assistant-web` | Frontend (baked image; proxies to the api service via `BACKEND_URL`) | **3010** → 3000 |
 
 ### Ports cheat sheet
 
 - **Tailscale / docker prod**: frontend `:3010`, backend `:8010` — use these for browser tests on the server.
-- **docker dev compose**: frontend `:3000`, backend `:8000`.
 - **Native (venv + npm run dev)**: frontend `:3000`, backend `:8000`.
 
 ### Commands
 
 ```bash
-# Production-like (what runs on the server):
-docker compose up -d --build              # build + recreate; required after code changes
-docker compose ps                         # check status
-docker compose logs -f qa-frontend        # follow frontend logs
-docker compose down                       # stop + remove containers
-
-# Dev compose (backend hot-reload, frontend still rebuilt):
-docker compose -f docker-compose.dev.yml up --build
-docker compose -f docker-compose.dev.yml down
+# From the deployment dir (docker group workaround via sg):
+cd /srv/dakis
+sg docker -c 'docker compose up -d --build qa-ai-assistant-api qa-ai-assistant-web'   # rebuild + recreate
+sg docker -c 'docker compose ps'
+sg docker -c 'docker compose logs -f qa-ai-assistant-web'
+sg docker -c 'docker compose down qa-ai-assistant-api qa-ai-assistant-web'
 ```
 
 ### **Code changes require a rebuild + restart**
 
-The frontend `Dockerfile` builds the Next.js app at image-build time (standalone output, no source bind-mount) — so **any change under `frontend/src/` does not show up until you rebuild and recreate the container**:
+Both images are baked at build time (standalone Next.js output + no `--reload`
+uvicorn, no source bind-mount) — so **any change under `frontend/src/` or
+`backend/` does not show up until you rebuild and recreate the container**. There
+is no hot-reload compose; rebuild the affected service:
 
 ```bash
-docker compose up -d --build qa-frontend  # rebuild only the frontend service
-# or
-docker compose up -d --build              # rebuild both
+sg docker -c 'docker compose up -d --build qa-ai-assistant-web'   # frontend only
+sg docker -c 'docker compose up -d --build qa-ai-assistant-api'   # backend only
 ```
 
-The backend container in `docker-compose.yml` is also baked at build time (no `--reload`), so backend code changes likewise require `--build`. Only `docker-compose.dev.yml` bind-mounts `./backend` and runs `uvicorn --reload`, giving the backend hot-reload locally — the frontend is always image-baked.
-
-After a rebuild, wait for both `http://localhost:8010/health` (returns `{"status":"healthy"}`) and `http://localhost:3010/` (returns the dashboard HTML) before testing.
+After a rebuild, wait for both `http://localhost:8010/health` (returns
+`{"status":"healthy"}`) and `http://localhost:3010/` (returns the dashboard HTML)
+before testing.
 
 ---
 
@@ -108,14 +107,18 @@ After a rebuild, wait for both `http://localhost:8010/health` (returns `{"status
 
 ### Backend (`backend/.env`)
 
+See `backend/.env.example` for a copy-paste template.
+
 | Variable | Default | Notes |
 |----------|---------|-------|
-| `LLM_PROVIDER` | `mock` | `mock`, `openai`, or `anthropic` |
+| `LLM_PROVIDER` | `mock` | `mock`, `openai`, `anthropic`, or `openrouter` |
 | `OPENAI_API_KEY` | — | Required if `LLM_PROVIDER=openai` |
 | `ANTHROPIC_API_KEY` | — | Required if `LLM_PROVIDER=anthropic` |
-| `DATABASE_URL` | `sqlite:///./qa_craft.db` | SQLite for dev, PostgreSQL for prod |
+| `OPENROUTER_API_KEY` | — | Required if `LLM_PROVIDER=openrouter` |
+| `DATABASE_URL` | `sqlite:///./qa_craft.db` | SQLite for dev, PostgreSQL for prod (needs `psycopg2-binary`) |
 | `ENVIRONMENT` | `development` | `development`, `staging`, `production` |
-| `API_KEY` | — | Optional; if set, all writes require `X-API-Key` header |
+| `API_KEY` | — | Optional; if set, all writes require `X-API-Key` header (the frontend proxy injects it — must match) |
+| `REQUIRE_AUTH_FOR_READS` | `false` | If `true`, read endpoints also require auth |
 | `AUTO_MIGRATE` | `true` | Run Alembic migrations on startup |
 | `VALIDATION_ENABLED` | `true` | Enable two-stage requirements validation |
 | `CORS_ORIGINS` | `http://localhost:3000,...` | Comma-separated allowed origins |
@@ -123,10 +126,13 @@ After a rebuild, wait for both `http://localhost:8010/health` (returns `{"status
 
 ### Frontend (`frontend/.env.local`)
 
+See `frontend/.env.local.example` for a copy-paste template.
+
 | Variable | Default | Notes |
 |----------|---------|-------|
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8000/api/v1` | Backend base URL |
-| `NEXT_PUBLIC_API_KEY` | — | Optional; sent as `X-API-Key` header |
+| `NEXT_PUBLIC_API_URL` | `/api/v1` | Base URL for browser API calls. Relative → goes through the Next proxy (which injects the key server-side) |
+| `BACKEND_URL` | `http://localhost:8000` | Where the proxy forwards requests (Docker: the api service). The only env var that matters for the Dockerized frontend |
+| `API_KEY` | — | **Server-only** (no `NEXT_PUBLIC_` prefix). The proxy injects it as `X-API-Key`; must match the backend `API_KEY` |
 
 ---
 

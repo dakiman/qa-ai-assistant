@@ -53,7 +53,12 @@ class Feature(FeatureBase, table=True):
     refinement_count: int = Field(default=0)
 
     # Relationships
-    test_cases: list["TestCase"] = Relationship(back_populates="feature")
+    # cascade_delete=True: deleting a Feature removes its TestCases (ORM-level),
+    # so DELETE /features/{id} no longer 500s trying to null a NOT NULL FK.
+    test_cases: list["TestCase"] = Relationship(
+        back_populates="feature",
+        cascade_delete=True,
+    )
 
 
 class FeatureCreate(FeatureBase):
@@ -210,7 +215,7 @@ class TestCase(TestCaseBase, table=True):
     """TestCase database model."""
     id: Optional[int] = Field(default=None, primary_key=True)
     feature_id: int = Field(foreign_key="feature.id")
-    
+
     # Relationships
     feature: Optional[Feature] = Relationship(back_populates="test_cases")
 

@@ -5,6 +5,7 @@ uvicorn[standard]>=0.32.0
 # Database
 sqlmodel>=0.0.22
 alembic>=1.13.0
+psycopg2-binary>=2.9.9  # PostgreSQL driver (production DATABASE_URL)
 
 # AI Integration
 openai>=1.50.0

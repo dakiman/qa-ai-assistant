@@ -9,6 +9,7 @@ import {
   useQuery,
   useMutation,
   useQueryClient,
+  keepPreviousData,
   type UseQueryOptions,
 } from '@tanstack/react-query';
 import {
@@ -93,6 +94,9 @@ export function useFeatureTestCases(
     queryKey: queryKeys.features.testCases(featureId, filters),
     queryFn: () => generateApi.getFeatureTestCases(featureId, filters),
     enabled: featureId > 0,
+    // Keep showing the previous results while a new filter/search key loads, so
+    // changing filters doesn't flip isLoading and unmount the page.
+    placeholderData: keepPreviousData,
     ...options,
   });
 }
