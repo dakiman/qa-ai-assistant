@@ -8,6 +8,23 @@
 
 > **Resolution status (2026-07-02):** All 13 High-severity findings (H1–H13) **and all 26 Medium-severity findings (M1–M26)** are **fixed and verified**. High batch: merged in `fbb1c07`. Medium batch: merged in `db52166` (backend `a533d86`, frontend `46adb0e`, infra `a915c0c`) — verified via Alembic up/down migration cycle on SQLite, mock-mode router smoke tests (generation guard, force-regen preserving manual/accepted cases, cascade delete), a clean `next build` typecheck, and an end-to-end pass through the redeployed stack (create / null-PATCH→400 / CSV-injection escape / pagination bounds / cascade delete) against the real deployed DB with all data preserved; both containers report healthy. A high-value subset of the Low findings — **L4, L6, L7, L8, L12, L15, L16, L18, L22, L24** — is also fixed and verified (branch `fix/fable-low-highvalue`). **L19 is intentionally deferred** (see its note). The remaining cosmetic/doc Lows and the structural suggestions are **not** yet addressed. Fixed items are marked ✅ RESOLVED below.
 
+---
+
+## Handoff — remaining work (for the next agent)
+
+**Everything High and Medium is DONE and merged to `main`.** Pick up from here. History: `fbb1c07` (High) → `db52166` (Medium) → `a20fa9c` (high-value Lows). All changes are **local commits only — not pushed**. The deployed stack (`/srv/dakis/apps/qa-ai-assistant/compose.yml`, ports 8010/3010) is already running this code and both containers report healthy.
+
+**Still open, roughly in priority order:**
+
+1. **Structural #1 — backend test suite.** `backend/tests/` still doesn't exist. Highest leverage: pytest over the routers with in-memory SQLite + mock LLM would lock in H1–H5, M5–M8, and the migration behavior. All of those were verified manually this pass but have no regression net.
+2. **Structural #5 — rate limiting** on `generate`/`refine` (e.g. slowapi). Matters more now the API key isn't in the bundle.
+3. **Structural #2 — unit-of-work / commit-once.** Partially done: generate/refine now commit once (M6) via `commit=False` repo params, but the base repos still commit per-call elsewhere. A real UoW dependency would finish it.
+4. **Structural #6 / docs Lows (L27–L30).** The three run docs (README, CLAUDE.md, `run-project.md`) and `.claude/docs/current-state.md` / `.cursor/context.md` still describe divergent/stale workflows. `current-state.md` is dated 2026-04-28 and predates all the H/M/L work — treat it as unreliable and reconcile against code.
+5. **L19 (deferred).** Regenerating `frontend/src/lib/api-types.ts` with openapi-typescript v7 marks default-valued request fields (`target_count`, `force_regenerate`, `skip_llm_validation`) as **required** even though the OpenAPI `required` array omits them — breaking ergonomic `generate` callers. Needs a generator/config fix (or an `Omit`+optional re-add in `api.ts`) before the intersection patches can be dropped.
+6. **Remaining low-value Lows:** backend L1, L2, L3, L5, L9, L10, L11, L13, L14, L17; frontend L20, L21, L23, L25, L26. Each is small and self-contained; see its bullet below.
+
+**Environment caveat (not a code bug):** the deployed backend runs `LLM_PROVIDER=openrouter` on a free model that fails instructor's tool-calling structured output (503 on real generate/validate). Use a tool-calling-capable model (anthropic/openai) or `mock` to exercise real generation. Switching instructor to `Mode.JSON` for the openrouter branch would fix free models but was declined this pass.
+
 ## Executive summary
 
 The architecture is sound (repository pattern, instructor-constrained LLM output, mock mode, structured logging, optional API-key auth — all consistently applied), but several **core workflows are broken in ways that lose user data or 500**:

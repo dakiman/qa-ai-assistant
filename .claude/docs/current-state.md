@@ -2,6 +2,14 @@
 
 Last assessed: 2026-04-28
 
+> ⚠️ **STALE (as of 2026-07-02).** This file predates the Fable-review remediation
+> (all High + Medium findings and a high-value Low subset are now fixed and merged).
+> Several statements here are out of date (flagged as **L27** in the review — e.g. the
+> Edit-button and env-example claims, the OpenAI default, and the "Port Audit" that
+> describes the decommissioned old host). **Treat `fable-review.md` (repo root) as the
+> source of truth** for what's done vs. open, and verify anything here against the code
+> before relying on it. Reconciling this file is itself an open task (L27).
+
 ---
 
 ## What Works

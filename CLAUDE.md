@@ -276,16 +276,26 @@ Feature (raw_requirements)
 
 ## Known Issues
 
-See `.claude/docs/current-state.md` for the full issue list.
+**The authoritative issue tracker is `fable-review.md`** (repo root) — a full-codebase
+review with per-item ✅ RESOLVED / ⚠️ DEFERRED status. Start there before picking up
+remediation work. As of 2026-07-02: **all High (H1–H13) and all Medium (M1–M26)
+findings are fixed and merged**, plus a high-value Low subset (L4, L6, L7, L8, L12,
+L15, L16, L18, L22, L24). See the "Handoff — remaining work" section at the top of
+that file for exactly what is left.
 
-**Quick summary:**
-- ~~Debug logging artifacts~~ — **RESOLVED** (removed from main.py, refine.py, RefineActionBar.tsx)
-- ~~Frontend API port defaulted to 8001~~ — **RESOLVED** (api.ts now defaults to 8000)
-- ~~Missing env example files~~ — **RESOLVED** (`backend/.env.example` and `frontend/.env.local.example` now tracked)
-- ~~`Edit` button on TestCaseCard is a visual placeholder~~ — **RESOLVED** (`EditTestCaseDialog` wired up; edits title/steps/expected_result via `useUpdateTestCase`)
-- No test suite yet (`backend/tests/` doesn't exist)
-- Rate limiting not yet implemented
-- No Generate/Regenerate button on feature detail page (generation happens in the new-feature flow)
+**Still open (not yet started):**
+- No backend test suite (`backend/tests/` doesn't exist) — suggested improvement #1.
+- Rate limiting not implemented — suggested improvement #5.
+- Remaining cosmetic/doc Low findings (L1–L3, L5, L9–L11, L13, L14, L17, L20, L21,
+  L23, L25–L30) and the deferred L19 (openapi-typescript v7 required-field quirk).
+- `.claude/docs/current-state.md` is partly stale (L27) — cross-check against code.
+
+**Recently resolved (no longer issues):** debug logging artifacts; frontend port 8001;
+the Edit-button placeholder; the feature-delete 500 (H1); `force_regenerate` destroying
+manual cases (H2); the write key shipping in the browser bundle (H10); the naive-datetime
+display skew (M2); silent mutation-error swallowing (M17, now a global toast); the dead
+"Edit Feature" button (M16, now wired). A **Regenerate** button now exists on the feature
+detail page.
 
 ---
 
