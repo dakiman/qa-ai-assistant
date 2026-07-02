@@ -124,7 +124,12 @@ class TestCaseRepository(BaseRepository[TestCase]):
             statement = statement.where(TestCase.is_manual == is_manual)
         
         if search:
-            statement = statement.where(TestCase.title.contains(search))
+            # autoescape neutralizes LIKE wildcards (% and _) in user input;
+            # icontains is case-insensitive on both SQLite and Postgres (plain
+            # contains diverges between them).
+            statement = statement.where(
+                TestCase.title.icontains(search, autoescape=True)
+            )
         
         return self.session.exec(statement).all()
     

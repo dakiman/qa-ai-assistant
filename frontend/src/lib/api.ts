@@ -184,7 +184,20 @@ async function handleResponse<T>(response: Response): Promise<T> {
     ) {
       throw new ValidationAPIError(error.detail.issues ?? [], error.detail.suggestions ?? []);
     }
-    const message = typeof error.detail === 'string' ? error.detail : 'Request failed';
+    let message: string;
+    if (typeof error.detail === 'string') {
+      message = error.detail;
+    } else if (Array.isArray(error.detail)) {
+      // FastAPI validation errors are an array of {loc, msg, type}. Surface the
+      // actual messages instead of a generic "Request failed" (L22).
+      message =
+        error.detail
+          .map((d: { msg?: string }) => d?.msg)
+          .filter(Boolean)
+          .join('; ') || 'Request failed';
+    } else {
+      message = 'Request failed';
+    }
     throw new APIError(response.status, message);
   }
 
@@ -272,6 +285,22 @@ export const featureApi = {
     }
     const blob = await response.blob();
     return { blob, filename };
+  },
+};
+
+// ============== Health / connectivity ==============
+
+export const healthApi = {
+  /**
+   * Cheap connectivity probe for the "API Connected" indicator. Hits the
+   * features list with limit=1 through the proxy (same-origin) and reports
+   * whether the backend answered ok.
+   */
+  async check(): Promise<boolean> {
+    const response = await fetch(`${API_BASE_URL}/features/?limit=1`, {
+      headers: getHeaders(),
+    });
+    return response.ok;
   },
 };
 

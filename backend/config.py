@@ -1,5 +1,6 @@
 """Application configuration using Pydantic settings."""
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
@@ -60,6 +61,22 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         """Check if running in production environment."""
         return self.environment.lower() == "production"
+
+    @model_validator(mode="after")
+    def _reject_wildcard_origins_with_credentials(self) -> "Settings":
+        """Fail fast on an insecure CORS combination.
+
+        With `allow_credentials=True`, Starlette reflects the request Origin back
+        instead of honoring a literal `*`, effectively allowing any origin to make
+        credentialed requests. Reject the combination at startup rather than
+        shipping a silently-permissive policy.
+        """
+        if self.cors_allow_credentials and "*" in self.cors_origins_list:
+            raise ValueError(
+                "CORS_ORIGINS='*' cannot be combined with cors_allow_credentials=true. "
+                "List explicit origins, or set cors_allow_credentials=false."
+            )
+        return self
     
     class Config:
         env_file = ".env"

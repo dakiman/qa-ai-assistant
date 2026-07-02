@@ -19,6 +19,7 @@ import {
   testCaseApi,
   refineApi,
   linksApi,
+  healthApi,
   type Feature,
   type Template,
   type TemplateCreate,
@@ -60,6 +61,19 @@ export const queryKeys = {
     detail: (id: number) => ['testCases', id] as const,
   },
 };
+
+// ============== Health ==============
+
+/** Backs the sidebar's connectivity indicator with a real probe (L24). */
+export function useApiHealth() {
+  return useQuery({
+    queryKey: ['api-health'],
+    queryFn: healthApi.check,
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+    retry: false,
+  });
+}
 
 // ============== Feature Queries ==============
 

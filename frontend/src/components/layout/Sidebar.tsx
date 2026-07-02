@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Home, Box, Plus, LayoutTemplate, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useApiHealth } from '@/lib/queries';
 
 const navigation = [
   {
@@ -34,6 +35,17 @@ interface SidebarContentsProps {
 
 export function SidebarContents({ onNavigate }: SidebarContentsProps = {}) {
   const pathname = usePathname();
+  const health = useApiHealth();
+
+  // Only the single best-matching (longest-prefix) nav item is active, so
+  // /features/new no longer lights up both "Features" and "New Feature" (L24).
+  const activeHref = navigation
+    .filter((item) =>
+      item.href === '/'
+        ? pathname === '/'
+        : pathname === item.href || pathname.startsWith(item.href + '/')
+    )
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
 
   return (
     <div className="flex h-full flex-col">
@@ -54,8 +66,7 @@ export function SidebarContents({ onNavigate }: SidebarContentsProps = {}) {
           Navigation
         </p>
         {navigation.map((item) => {
-          const isActive = pathname === item.href ||
-            (item.href !== '/' && pathname.startsWith(item.href));
+          const isActive = item.href === activeHref;
           const Icon = item.icon;
 
           return (
@@ -63,6 +74,7 @@ export function SidebarContents({ onNavigate }: SidebarContentsProps = {}) {
               key={item.name}
               href={item.href}
               onClick={onNavigate}
+              aria-current={isActive ? 'page' : undefined}
               className={cn(
                 'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
                 isActive
@@ -77,11 +89,22 @@ export function SidebarContents({ onNavigate }: SidebarContentsProps = {}) {
         })}
       </nav>
 
-      {/* Footer */}
+      {/* Footer — reflects a real connectivity probe (L24) */}
       <div className="mt-auto border-t border-sidebar-border p-4">
         <div className="flex items-center gap-3 rounded-lg bg-sidebar-accent/30 px-3 py-2">
-          <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-          <span className="text-xs text-muted-foreground">API Connected</span>
+          {(() => {
+            const { dot, label } = health.isLoading
+              ? { dot: 'bg-amber-500 animate-pulse', label: 'Checking API…' }
+              : health.data
+                ? { dot: 'bg-green-500 animate-pulse', label: 'API Connected' }
+                : { dot: 'bg-red-500', label: 'API Unreachable' };
+            return (
+              <>
+                <div className={cn('h-2 w-2 rounded-full', dot)} />
+                <span className="text-xs text-muted-foreground">{label}</span>
+              </>
+            );
+          })()}
         </div>
       </div>
     </div>
