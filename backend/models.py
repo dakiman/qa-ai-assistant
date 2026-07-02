@@ -3,9 +3,27 @@
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
+from sqlalchemy import DateTime, UniqueConstraint
 from sqlmodel import SQLModel, Field, Relationship
 from pydantic import field_validator
 import json
+
+
+def _ensure_utc(value: Optional[datetime]) -> Optional[datetime]:
+    """Treat naive datetimes as UTC.
+
+    SQLite strips tzinfo on read, so a value stored as aware comes back naive.
+    Attaching UTC here guarantees JSON serialization carries a ``+00:00`` offset
+    and clients don't render timestamps in their own local timezone.
+    """
+    if value is not None and value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
+
+
+# Timezone-aware column type for every created_at field. On Postgres this maps
+# to TIMESTAMP WITH TIME ZONE; on SQLite it is stored as text (tz stripped on
+# read, re-attached by _ensure_utc in the read schemas).
 
 
 class TestCaseStatus(str, Enum):
@@ -48,7 +66,10 @@ class FeatureBase(SQLModel):
 class Feature(FeatureBase, table=True):
     """Feature database model."""
     id: Optional[int] = Field(default=None, primary_key=True)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_type=DateTime(timezone=True),
+    )
     generation_count: int = Field(default=0)
     refinement_count: int = Field(default=0)
 
@@ -73,6 +94,11 @@ class FeatureRead(FeatureBase):
     generation_count: int = 0
     refinement_count: int = 0
 
+    @field_validator("created_at")
+    @classmethod
+    def _normalize_created_at(cls, v: datetime) -> datetime:
+        return _ensure_utc(v)
+
 
 class FeatureUpdate(SQLModel):
     """Schema for updating a Feature."""
@@ -87,13 +113,30 @@ class FeatureUpdate(SQLModel):
 class FeatureLink(SQLModel, table=True):
     """Link between two features with a typed relationship."""
     __tablename__ = "feature_link"
-    
+    # One link per ordered (source, target) pair — the app already treats a pair
+    # as unique (check_feature_link_exists ignores type), so this makes the DB
+    # the source of truth and closes the create TOCTOU (M7).
+    __table_args__ = (
+        UniqueConstraint(
+            "source_feature_id", "target_feature_id", name="uq_feature_link_pair"
+        ),
+    )
+
     id: Optional[int] = Field(default=None, primary_key=True)
-    source_feature_id: int = Field(foreign_key="feature.id", index=True)
-    target_feature_id: int = Field(foreign_key="feature.id", index=True)
+    # ondelete=CASCADE mirrors the migration FK metadata so autogenerate and
+    # create_all-based test schemas agree with the deployed schema (M12).
+    source_feature_id: int = Field(
+        foreign_key="feature.id", index=True, ondelete="CASCADE"
+    )
+    target_feature_id: int = Field(
+        foreign_key="feature.id", index=True, ondelete="CASCADE"
+    )
     link_type: FeatureLinkType
     notes: Optional[str] = Field(default=None, max_length=1000)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_type=DateTime(timezone=True),
+    )
 
 
 class FeatureLinkCreate(SQLModel):
@@ -114,18 +157,37 @@ class FeatureLinkRead(SQLModel):
     # Include target feature info for display
     target_feature_title: Optional[str] = None
 
+    @field_validator("created_at")
+    @classmethod
+    def _normalize_created_at(cls, v: datetime) -> datetime:
+        return _ensure_utc(v)
+
 
 # ============== Test Case Link Models ==============
 
 class TestCaseLink(SQLModel, table=True):
     """Link from a feature to a test case from another feature."""
     __tablename__ = "test_case_link"
-    
+    # One link per (feature, test_case) pair — closes the create TOCTOU (M7).
+    __table_args__ = (
+        UniqueConstraint(
+            "feature_id", "test_case_id", name="uq_test_case_link_pair"
+        ),
+    )
+
     id: Optional[int] = Field(default=None, primary_key=True)
-    feature_id: int = Field(foreign_key="feature.id", index=True)
-    test_case_id: int = Field(foreign_key="testcase.id", index=True)
+    # ondelete=CASCADE mirrors the migration FK metadata (M12).
+    feature_id: int = Field(
+        foreign_key="feature.id", index=True, ondelete="CASCADE"
+    )
+    test_case_id: int = Field(
+        foreign_key="testcase.id", index=True, ondelete="CASCADE"
+    )
     notes: Optional[str] = Field(default=None, max_length=1000)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_type=DateTime(timezone=True),
+    )
 
 
 class TestCaseLinkCreate(SQLModel):
@@ -145,6 +207,11 @@ class TestCaseLinkRead(SQLModel):
     test_case_title: Optional[str] = None
     test_case_feature_id: Optional[int] = None
     test_case_feature_title: Optional[str] = None
+
+    @field_validator("created_at")
+    @classmethod
+    def _normalize_created_at(cls, v: datetime) -> datetime:
+        return _ensure_utc(v)
 
 
 # ============== Combined Links Response ==============

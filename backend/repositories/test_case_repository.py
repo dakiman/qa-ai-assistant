@@ -7,7 +7,12 @@ import json
 
 from database import get_session
 from models import TestCase, TestCaseCreate, TestCaseUpdate, TestCaseStatus
-from repositories.base import BaseRepository
+from repositories.base import BaseRepository, reject_null_fields
+
+# TestCase columns that are NOT NULL — a PATCH may omit them but must not null them.
+_TEST_CASE_NON_NULLABLE = {
+    "title", "steps", "expected_result", "is_edge_case", "is_manual", "status",
+}
 
 
 class TestCaseRepository(BaseRepository[TestCase]):
@@ -55,7 +60,8 @@ class TestCaseRepository(BaseRepository[TestCase]):
             Updated test case
         """
         update_dict = update_data.model_dump(exclude_unset=True)
-        
+        reject_null_fields(update_dict, _TEST_CASE_NON_NULLABLE)
+
         # Handle steps conversion from list to JSON
         if "steps" in update_dict and update_dict["steps"] is not None:
             update_dict["steps"] = json.dumps(update_dict["steps"])
@@ -172,7 +178,7 @@ class TestCaseRepository(BaseRepository[TestCase]):
         
         return updated_cases
     
-    def delete_drafts(self, feature_id: int) -> int:
+    def delete_drafts(self, feature_id: int, commit: bool = True) -> int:
         """
         Delete AI-generated DRAFT test cases for a feature.
 
@@ -182,6 +188,8 @@ class TestCaseRepository(BaseRepository[TestCase]):
 
         Args:
             feature_id: Feature ID whose drafts to delete
+            commit: When False, defer the commit so the delete and the
+                replacement inserts land in one transaction.
 
         Returns:
             Number of drafts deleted
@@ -195,7 +203,7 @@ class TestCaseRepository(BaseRepository[TestCase]):
         count = len(drafts)
         for draft in drafts:
             self.session.delete(draft)
-        if count > 0:
+        if count > 0 and commit:
             self.session.commit()
         return count
 
@@ -208,13 +216,14 @@ class TestCaseRepository(BaseRepository[TestCase]):
         is_edge_case: bool = False,
         is_manual: bool = False,
         refinement_notes: Optional[str] = None,
-        status: TestCaseStatus = TestCaseStatus.DRAFT
+        status: TestCaseStatus = TestCaseStatus.DRAFT,
+        commit: bool = True,
     ) -> TestCase:
         """
         Create a test case from individual fields.
-        
+
         Useful for creating from LLM-generated drafts.
-        
+
         Args:
             feature_id: Parent feature ID
             title: Test case title
@@ -224,7 +233,9 @@ class TestCaseRepository(BaseRepository[TestCase]):
             is_manual: Whether this was manually created
             refinement_notes: Optional notes from refinement
             status: Initial status
-            
+            commit: When False, defer the commit so a batch of drafts and the
+                feature counter update commit together in one transaction.
+
         Returns:
             Created test case
         """
@@ -238,7 +249,7 @@ class TestCaseRepository(BaseRepository[TestCase]):
             refinement_notes=refinement_notes,
             status=status
         )
-        return self.create(db_test_case)
+        return self.create(db_test_case, commit=commit)
 
 
 def get_test_case_repository(

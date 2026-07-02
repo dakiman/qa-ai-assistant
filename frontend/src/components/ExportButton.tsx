@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/select';
 import { Download, Loader2 } from 'lucide-react';
 import { featureApi, type TestCaseStatus } from '@/lib/api';
+import { toast } from '@/lib/toast';
 
 type ExportFormat = 'json' | 'csv';
 type StatusFilter = 'all' | TestCaseStatus;
@@ -45,7 +46,9 @@ export function ExportButton({ featureId, className }: ExportButtonProps) {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(downloadUrl);
     } catch (error) {
-      console.error('Export failed:', error);
+      // Export isn't a TanStack mutation, so the global handler doesn't cover it —
+      // report it explicitly (M17).
+      toast(error instanceof Error ? error.message : 'Export failed', 'error');
     } finally {
       setIsExporting(false);
     }
@@ -54,7 +57,7 @@ export function ExportButton({ featureId, className }: ExportButtonProps) {
   return (
     <div className={`flex items-center gap-2 ${className || ''}`}>
       <Select value={format} onValueChange={(value: ExportFormat) => setFormat(value)}>
-        <SelectTrigger className="w-[100px]" size="sm">
+        <SelectTrigger className="w-[100px]" size="sm" aria-label="Export format">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -64,7 +67,7 @@ export function ExportButton({ featureId, className }: ExportButtonProps) {
       </Select>
       
       <Select value={statusFilter} onValueChange={(value: StatusFilter) => setStatusFilter(value)}>
-        <SelectTrigger className="w-[120px]" size="sm">
+        <SelectTrigger className="w-[120px]" size="sm" aria-label="Filter by status">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

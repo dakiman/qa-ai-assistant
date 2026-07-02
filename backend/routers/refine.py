@@ -1,8 +1,10 @@
 """Refinement engine endpoints."""
 
 from fastapi import APIRouter, Depends, status
+from sqlmodel import Session
 
 from auth import verify_api_key, verify_api_key_optional
+from database import get_session
 from exceptions import ResourceNotFoundError
 from models import (
     TestCaseStatus,
@@ -28,6 +30,7 @@ def refine_test_suite(
     test_case_repo: TestCaseRepository = Depends(get_test_case_repository),
     link_repo: LinkRepository = Depends(get_link_repository),
     llm_service: LLMService = Depends(get_llm_service),
+    session: Session = Depends(get_session),
     _: str = Depends(verify_api_key)
 ) -> RefinementResponse:
     """
@@ -46,12 +49,14 @@ def refine_test_suite(
     if not feature:
         raise ResourceNotFoundError("Feature", feature_id)
     
-    # Get template if specified
+    # Get template if specified. An invalid template_id is a client error —
+    # 404 to match /generate, rather than silently ignoring the user's choice.
     template_content = None
     if request.template_id:
         template = template_repo.get(request.template_id)
-        if template:
-            template_content = template.system_instructions
+        if not template:
+            raise ResourceNotFoundError("Template", request.template_id)
+        template_content = template.system_instructions
     
     # Get all accepted and manual test cases
     accepted_cases = test_case_repo.get_accepted_and_manual(feature_id)
@@ -77,7 +82,8 @@ def refine_test_suite(
         max_new_cases=request.max_new_cases
     )
 
-    # Save new test cases to database
+    # Save new test cases + bump the counter in one transaction (commit=False),
+    # so a partial failure can't persist some drafts without the counter update.
     edge_cases_added = 0
     for case_draft in new_cases:
         test_case_repo.create_from_draft(
@@ -88,12 +94,15 @@ def refine_test_suite(
             is_edge_case=True,
             is_manual=False,
             refinement_notes=case_draft.refinement_notes,
-            status=TestCaseStatus.DRAFT
+            status=TestCaseStatus.DRAFT,
+            commit=False,
         )
         edge_cases_added += 1
 
-    # Increment refinement counter
-    feature = feature_repo.increment_refinement_count(feature)
+    # Increment refinement counter, then commit the whole batch atomically.
+    feature = feature_repo.increment_refinement_count(feature, commit=False)
+    session.commit()
+    session.refresh(feature)
 
     # Fetch all test cases for the feature (including newly added ones)
     all_cases = test_case_repo.get_by_feature(feature_id)

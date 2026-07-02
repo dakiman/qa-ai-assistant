@@ -19,6 +19,19 @@ logger = get_logger(__name__)
 MAX_LINKED_REQUIREMENTS_CHARS = 2000
 MAX_LINKED_TEST_CASE_CHARS = 1500
 
+# instructor retry budget for malformed structured responses.
+LLM_MAX_RETRIES = 2
+
+
+def _max_tokens_for(case_count: int) -> int:
+    """Scale the output token budget with the number of requested cases.
+
+    A structured test case runs ~400-500 tokens; a fixed 4096 truncates large
+    suites (e.g. 30 cases) mid-response, which instructor then rejects as a
+    validation failure → 503. Grow with the count, capped to a sane ceiling.
+    """
+    return min(16000, 2000 + case_count * 500)
+
 
 def sanitize_for_prompt(text: str, max_length: int = 10000) -> str:
     """
@@ -130,11 +143,20 @@ class LLMService:
         if linked_context:
             logger.debug("Including linked context: %d characters", len(linked_context))
 
-        # Use mock if no API key or explicitly set to mock
-        if self.provider == "mock" or self.client is None:
+        # Only mock mode uses the fake generator. A real provider that failed to
+        # initialize a client (missing key or an unknown provider name) is a
+        # misconfiguration — surface it loudly instead of silently returning
+        # fabricated "AI-generated" cases.
+        if self.provider == "mock":
             logger.info("Using mock test case generation")
             return self._generate_mock_test_cases(requirements, target_count=target_count)
-        
+        if self.client is None:
+            raise LLMConfigurationError(
+                f"LLM provider '{self.provider}' is selected but not configured "
+                "(missing API key or unknown provider). Set the corresponding API "
+                "key or use LLM_PROVIDER=mock."
+            )
+
         # Build the system prompt
         system_prompt = template_content or self._get_default_system_prompt()
         
@@ -177,6 +199,7 @@ Mark edge cases with is_edge_case=True."""
                 response = self.client.chat.completions.create(
                     model=model,
                     response_model=TestCaseList,
+                    max_retries=LLM_MAX_RETRIES,
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt}
@@ -185,10 +208,12 @@ Mark edge cases with is_edge_case=True."""
             elif self.provider == "anthropic":
                 response = self.client.messages.create(
                     model=self.settings.anthropic_model,
-                    max_tokens=4096,
+                    max_tokens=_max_tokens_for(target_count),
                     response_model=TestCaseList,
+                    max_retries=LLM_MAX_RETRIES,
+                    system=system_prompt,
                     messages=[
-                        {"role": "user", "content": f"{system_prompt}\n\n{user_prompt}"}
+                        {"role": "user", "content": user_prompt}
                     ]
                 )
             else:
@@ -236,10 +261,17 @@ Mark edge cases with is_edge_case=True."""
         if linked_context:
             logger.debug("Including linked context: %d characters", len(linked_context))
 
-        # Use mock if no API key or explicitly set to mock
-        if self.provider == "mock" or self.client is None:
+        # Only mock mode uses the fake generator; a real provider without a
+        # usable client is a misconfiguration (see generate_initial_test_cases).
+        if self.provider == "mock":
             logger.info("Using mock refinement generation")
             return self._generate_mock_refinements(requirements, accepted_cases, max_new_cases=max_new_cases)
+        if self.client is None:
+            raise LLMConfigurationError(
+                f"LLM provider '{self.provider}' is selected but not configured "
+                "(missing API key or unknown provider). Set the corresponding API "
+                "key or use LLM_PROVIDER=mock."
+            )
         
         # Format existing cases for the prompt
         existing_cases_text = self._format_existing_cases(accepted_cases)
@@ -302,6 +334,7 @@ For each new test case:
                 response = self.client.chat.completions.create(
                     model=model,
                     response_model=TestCaseList,
+                    max_retries=LLM_MAX_RETRIES,
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt}
@@ -310,10 +343,12 @@ For each new test case:
             elif self.provider == "anthropic":
                 response = self.client.messages.create(
                     model=self.settings.anthropic_model,
-                    max_tokens=4096,
+                    max_tokens=_max_tokens_for(max_new_cases),
                     response_model=TestCaseList,
+                    max_retries=LLM_MAX_RETRIES,
+                    system=system_prompt,
                     messages=[
-                        {"role": "user", "content": f"{system_prompt}\n\n{user_prompt}"}
+                        {"role": "user", "content": user_prompt}
                     ]
                 )
             else:

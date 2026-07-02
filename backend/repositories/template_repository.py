@@ -6,7 +6,10 @@ from sqlmodel import Session, select
 
 from database import get_session
 from models import Template, TemplateUpdate
-from repositories.base import BaseRepository
+from repositories.base import BaseRepository, reject_null_fields
+
+# Template columns that are NOT NULL.
+_TEMPLATE_NON_NULLABLE = {"name", "system_instructions"}
 
 
 class TemplateRepository(BaseRepository[Template]):
@@ -57,6 +60,7 @@ class TemplateRepository(BaseRepository[Template]):
             Updated template
         """
         update_dict = update_data.model_dump(exclude_unset=True)
+        reject_null_fields(update_dict, _TEMPLATE_NON_NULLABLE)
         for key, value in update_dict.items():
             setattr(template, key, value)
         

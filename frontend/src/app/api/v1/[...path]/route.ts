@@ -29,9 +29,19 @@ async function handler(req: NextRequest) {
 
   const upstream = await fetch(url, init);
 
+  // Drop hop-by-hop and length/encoding headers. undici already decompressed the
+  // body, so forwarding the upstream (compressed) content-length would truncate
+  // or corrupt the response if the backend ever enables gzip. Let the runtime
+  // recompute the length.
+  const STRIP_RESPONSE_HEADERS = [
+    'content-encoding',
+    'content-length',
+    'transfer-encoding',
+    'connection',
+  ];
   const responseHeaders = new Headers();
   upstream.headers.forEach((value, key) => {
-    if (!['content-encoding', 'transfer-encoding', 'connection'].includes(key.toLowerCase())) {
+    if (!STRIP_RESPONSE_HEADERS.includes(key.toLowerCase())) {
       responseHeaders.set(key, value);
     }
   });

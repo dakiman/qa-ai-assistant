@@ -96,52 +96,74 @@ export function TestCaseFilters({
           <span>Filters:</span>
         </div>
 
-        {/* Status Filters */}
+        {/* Status Filters — real buttons so they're keyboard-focusable and
+            expose pressed state to screen readers (M22). */}
         <div className="flex items-center gap-1.5 border-r border-border pr-3 mr-1">
-          {statusOptions.map((option) => (
-            <Badge
-              key={option.value ?? 'all'}
-              variant={filters.status === option.value ? 'default' : 'outline'}
-              className={cn(
-                'cursor-pointer transition-colors',
-                filters.status === option.value ? option.color : 'hover:bg-muted'
-              )}
-              onClick={() => toggleStatus(option.value)}
-            >
-              {option.label}
-            </Badge>
-          ))}
+          {statusOptions.map((option) => {
+            const active = filters.status === option.value;
+            return (
+              <button
+                key={option.value ?? 'all'}
+                type="button"
+                aria-pressed={active}
+                onClick={() => toggleStatus(option.value)}
+                className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <Badge
+                  variant={active ? 'default' : 'outline'}
+                  className={cn(
+                    'cursor-pointer transition-colors',
+                    active ? option.color : 'hover:bg-muted'
+                  )}
+                >
+                  {option.label}
+                </Badge>
+              </button>
+            );
+          })}
         </div>
 
         {/* Type Filters */}
         <div className="flex items-center gap-1.5">
-          <Badge
-            variant={filters.is_edge_case ? 'default' : 'outline'}
-            className={cn(
-              'cursor-pointer transition-colors',
-              filters.is_edge_case 
-                ? 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20' 
-                : 'hover:bg-muted'
-            )}
+          <button
+            type="button"
+            aria-pressed={!!filters.is_edge_case}
             onClick={toggleEdgeCase}
+            className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <Sparkles className="w-3 h-3 mr-1" />
-            Edge Cases
-          </Badge>
+            <Badge
+              variant={filters.is_edge_case ? 'default' : 'outline'}
+              className={cn(
+                'cursor-pointer transition-colors',
+                filters.is_edge_case
+                  ? 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20'
+                  : 'hover:bg-muted'
+              )}
+            >
+              <Sparkles className="w-3 h-3 mr-1" />
+              Edge Cases
+            </Badge>
+          </button>
 
-          <Badge
-            variant={filters.is_manual ? 'default' : 'outline'}
-            className={cn(
-              'cursor-pointer transition-colors',
-              filters.is_manual 
-                ? 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20' 
-                : 'hover:bg-muted'
-            )}
+          <button
+            type="button"
+            aria-pressed={!!filters.is_manual}
             onClick={toggleManual}
+            className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <Pencil className="w-3 h-3 mr-1" />
-            Manual
-          </Badge>
+            <Badge
+              variant={filters.is_manual ? 'default' : 'outline'}
+              className={cn(
+                'cursor-pointer transition-colors',
+                filters.is_manual
+                  ? 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20'
+                  : 'hover:bg-muted'
+              )}
+            >
+              <Pencil className="w-3 h-3 mr-1" />
+              Manual
+            </Badge>
+          </button>
         </div>
       </div>
     </div>

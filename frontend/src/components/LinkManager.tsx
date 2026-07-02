@@ -101,6 +101,8 @@ export function LinkManager({ featureId, className }: LinkManagerProps) {
               variant="ghost"
               size="sm"
               onClick={() => setIsExpanded(!isExpanded)}
+              aria-expanded={isExpanded}
+              aria-label={isExpanded ? 'Collapse linked context' : 'Expand linked context'}
             >
               {isExpanded ? (
                 <ChevronUp className="w-4 h-4" />
@@ -213,6 +215,7 @@ function FeatureLinkItem({ link, onDelete, isDeleting }: FeatureLinkItemProps) {
         className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
         onClick={onDelete}
         disabled={isDeleting}
+        aria-label={`Delete link to ${link.target_feature_title || `feature #${link.target_feature_id}`}`}
       >
         <Trash2 className="w-4 h-4" />
       </Button>
@@ -251,6 +254,7 @@ function TestCaseLinkItem({ link, onDelete, isDeleting }: TestCaseLinkItemProps)
         className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
         onClick={onDelete}
         disabled={isDeleting}
+        aria-label={`Remove reference to ${link.test_case_title || `test case #${link.test_case_id}`}`}
       >
         <Trash2 className="w-4 h-4" />
       </Button>

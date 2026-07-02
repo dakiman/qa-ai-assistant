@@ -13,6 +13,7 @@ import { RefineActionBar } from '@/components/RefineActionBar';
 import { ExportButton } from '@/components/ExportButton';
 import { TestCaseFilters } from '@/components/TestCaseFilters';
 import { LinkManager } from '@/components/LinkManager';
+import { EditFeatureDialog } from '@/components/EditFeatureDialog';
 import {
   Dialog,
   DialogContent,
@@ -22,7 +23,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ChevronLeft, Pencil, Check, Plus, ClipboardCheck, RefreshCw, Loader2 } from 'lucide-react';
-import { useFeatureDetail, useFeatureTestCases, useGenerateTestCases, queryKeys } from '@/lib/queries';
+import { useFeature, useFeatureTestCases, useGenerateTestCases, queryKeys } from '@/lib/queries';
 import { useQueryClient } from '@tanstack/react-query';
 import type { TestCase, RefinementResponse, TestCaseFilters as Filters, TestCaseStatus } from '@/lib/api';
 
@@ -66,11 +67,14 @@ export default function FeatureDetailPage() {
     router.replace(`/features/${featureId}${queryString ? `?${queryString}` : ''}`, { scroll: false });
   }, [featureId, router]);
 
-  // Fetch with filters
-  const { feature, isLoading: featureLoading, error: featureError } = useFeatureDetail(featureId);
+  // Fetch the feature and the filtered test cases. Using useFeature (not
+  // useFeatureDetail) avoids mounting a second, always-on unfiltered query — the
+  // unfiltered fetch below is now gated by hasActiveFilters and no longer dead (M20).
+  const { data: feature, isLoading: featureLoading, error: featureError } = useFeature(featureId);
   const { data: filteredTestCases = [] } = useFeatureTestCases(featureId, filters);
-  
-  // Also fetch unfiltered test cases for stats (only when filters are active)
+
+  // Also fetch unfiltered test cases for stats (only when filters are active;
+  // with no filters the filtered query already returns the full set).
   const hasActiveFilters = !!(filters.status || filters.is_edge_case || filters.is_manual || filters.search);
   const { data: allTestCases = [] } = useFeatureTestCases(featureId, undefined, {
     enabled: hasActiveFilters,
@@ -85,10 +89,13 @@ export default function FeatureDetailPage() {
   const error = featureError;
 
   const handleTestCaseStatusChange = (updatedCase: TestCase) => {
-    // Optimistically update the cache
-    queryClient.setQueryData<TestCase[]>(
-      queryKeys.features.testCases(featureId),
-      (old) => old?.map(tc => tc.id === updatedCase.id ? updatedCase : tc) ?? []
+    // Patch every cached test-case list for this feature (filtered + unfiltered)
+    // so the change shows immediately regardless of active filters. Return `old`
+    // untouched when a cache is empty — writing a fresh [] used to briefly render
+    // "No test cases generated yet" with a new dataUpdatedAt (M19).
+    queryClient.setQueriesData<TestCase[]>(
+      { queryKey: ['features', featureId, 'testCases'] },
+      (old) => (old ? old.map(tc => tc.id === updatedCase.id ? updatedCase : tc) : old)
     );
   };
 
@@ -200,10 +207,15 @@ export default function FeatureDetailPage() {
             <RefreshCw className="w-4 h-4 mr-2" />
             Regenerate
           </Button>
-          <Button variant="outline">
-            <Pencil className="w-4 h-4 mr-2" />
-            Edit Feature
-          </Button>
+          <EditFeatureDialog
+            feature={feature}
+            trigger={
+              <Button variant="outline">
+                <Pencil className="w-4 h-4 mr-2" />
+                Edit Feature
+              </Button>
+            }
+          />
         </div>
       </div>
 

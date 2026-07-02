@@ -3,9 +3,11 @@
 from typing import Optional, Sequence
 from dataclasses import dataclass
 from fastapi import Depends
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from database import get_session
+from exceptions import ResourceConflictError
 from logging_config import get_logger
 from models import (
     Feature,
@@ -94,15 +96,24 @@ class LinkRepository:
             notes=notes
         )
         self.session.add(inverse_link)
-        
-        self.session.commit()
+
+        try:
+            self.session.commit()
+        except IntegrityError:
+            # The unique (source, target) constraint fired — another request
+            # created the same pair between our existence check and this commit
+            # (TOCTOU). Surface it as a clean 409 instead of a 500.
+            self.session.rollback()
+            raise ResourceConflictError(
+                "Link between these features already exists"
+            )
         self.session.refresh(primary_link)
-        
+
         logger.info(
             "Created feature link: %d -[%s]-> %d (with inverse)",
             source_feature_id, link_type.value, target_feature_id
         )
-        
+
         return primary_link
     
     def get_feature_link(self, link_id: int) -> Optional[FeatureLink]:
@@ -146,18 +157,18 @@ class LinkRepository:
         Args:
             link: The link to delete
         """
-        # Find and delete the inverse link
+        # Find and delete EVERY matching inverse link, not just the first.
+        # A pre-constraint duplicate would otherwise leave a dangling inverse row
+        # that makes check_feature_link_exists return true forever (M7).
         inverse_type = FeatureLinkType.get_inverse(link.link_type)
         inverse_statement = select(FeatureLink).where(
             FeatureLink.source_feature_id == link.target_feature_id,
             FeatureLink.target_feature_id == link.source_feature_id,
             FeatureLink.link_type == inverse_type
         )
-        inverse_link = self.session.exec(inverse_statement).first()
-        
-        if inverse_link:
+        for inverse_link in self.session.exec(inverse_statement).all():
             self.session.delete(inverse_link)
-        
+
         # Delete the primary link
         self.session.delete(link)
         self.session.commit()
@@ -204,11 +215,18 @@ class LinkRepository:
             notes=notes
         )
         self.session.add(link)
-        self.session.commit()
+        try:
+            self.session.commit()
+        except IntegrityError:
+            # Unique (feature, test_case) constraint fired — concurrent create.
+            self.session.rollback()
+            raise ResourceConflictError(
+                "Link to this test case already exists"
+            )
         self.session.refresh(link)
-        
+
         logger.info("Created test case link: feature %d -> test case %d", feature_id, test_case_id)
-        
+
         return link
     
     def get_test_case_link(self, link_id: int) -> Optional[TestCaseLink]:
