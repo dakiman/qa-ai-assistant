@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from config import get_settings
-from exceptions import QACraftException, LLMServiceError, RequirementsValidationException
+from exceptions import QACraftException, RequirementsValidationException
 from logging_config import setup_logging, get_logger, RequestIdMiddleware
 from routers import features, templates, generate, test_cases, refine, export, links
 from seed import seed_default_templates
@@ -64,6 +64,10 @@ app = FastAPI(
 app.add_middleware(RequestIdMiddleware)
 
 # Configure CORS based on environment
+# Headers the browser should be allowed to READ off cross-origin responses:
+# the trace id the request-id design hands back, and the export filename.
+_EXPOSE_HEADERS = ["X-Request-ID", "Content-Disposition"]
+
 if settings.is_production:
     # Strict production settings
     app.add_middleware(
@@ -72,6 +76,7 @@ if settings.is_production:
         allow_credentials=settings.cors_allow_credentials,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization", "X-API-Key", "X-Request-ID"],
+        expose_headers=_EXPOSE_HEADERS,
     )
     logger.info("CORS configured for production with origins: %s", settings.cors_origins_list)
 else:
@@ -82,6 +87,7 @@ else:
         allow_credentials=settings.cors_allow_credentials,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=_EXPOSE_HEADERS,
     )
     logger.debug("CORS configured for %s with origins: %s", settings.environment, settings.cors_origins_list)
 

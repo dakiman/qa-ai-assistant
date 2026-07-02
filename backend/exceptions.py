@@ -109,17 +109,6 @@ class LLMConfigurationError(QACraftException):
         super().__init__(message=message, status_code=503)
 
 
-class AuthenticationError(QACraftException):
-    """Raised when authentication fails.
-    
-    Note: Most auth errors are handled directly in auth.py.
-    Use this for additional authentication-related errors.
-    """
-    
-    def __init__(self, message: str = "Authentication required"):
-        super().__init__(message=message, status_code=401)
-
-
 class AuthorizationError(QACraftException):
     """Raised when a user lacks permission for an action."""
     

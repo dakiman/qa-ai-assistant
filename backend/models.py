@@ -227,8 +227,10 @@ class FeatureLinksResponse(SQLModel):
 
 class TemplateBase(SQLModel):
     """Base Template model with shared fields."""
-    name: str = Field(index=True, unique=True)
-    system_instructions: str
+    name: str = Field(index=True, unique=True, max_length=200)
+    # Capped: template instructions become the LLM system prompt, so an
+    # unbounded value is both a token-cost and prompt-injection surface (L15).
+    system_instructions: str = Field(max_length=10000)
 
 
 class Template(TemplateBase, table=True):
@@ -281,7 +283,9 @@ class TestCaseBase(SQLModel):
 class TestCase(TestCaseBase, table=True):
     """TestCase database model."""
     id: Optional[int] = Field(default=None, primary_key=True)
-    feature_id: int = Field(foreign_key="feature.id")
+    # Indexed: this is the hottest FK in the schema — every list/export/refine
+    # query filters test cases by feature_id (L7).
+    feature_id: int = Field(foreign_key="feature.id", index=True)
 
     # Relationships
     feature: Optional[Feature] = Relationship(back_populates="test_cases")
