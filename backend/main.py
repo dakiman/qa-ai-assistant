@@ -5,9 +5,12 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from slowapi.errors import RateLimitExceeded
+
 from config import get_settings
 from exceptions import QACraftException, RequirementsValidationException
 from logging_config import setup_logging, get_logger, RequestIdMiddleware
+from rate_limit import limiter
 from routers import features, templates, generate, test_cases, refine, export, links
 from seed import seed_default_templates
 
@@ -65,6 +68,9 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan
 )
+
+# Rate limiter (slowapi) — the decorated routes look it up via app.state.
+app.state.limiter = limiter
 
 # Add request ID middleware for tracing (must be added before CORS)
 app.add_middleware(RequestIdMiddleware)
@@ -125,6 +131,22 @@ def health_check():
 
 
 # --- Exception Handlers ---
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    """Return a 429 in the app's consistent error format.
+
+    slowapi's default handler uses a different body shape; reshape it to
+    ``{"detail": ...}`` like every other error response.
+    """
+    logger.warning(
+        "Rate limit exceeded on %s (limit=%s)", request.url.path, exc.detail
+    )
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Rate limit exceeded. Please try again later."},
+    )
+
 
 @app.exception_handler(RequirementsValidationException)
 async def requirements_validation_handler(request: Request, exc: RequirementsValidationException):

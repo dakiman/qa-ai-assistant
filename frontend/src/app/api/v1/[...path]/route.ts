@@ -5,8 +5,10 @@ const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000';
 const API_KEY = process.env.API_KEY || '';
 
 // Only these client request headers are forwarded upstream. The write key is
-// injected here server-side rather than sent from the browser.
-const FORWARD_REQUEST_HEADERS = ['content-type', 'accept'];
+// injected here server-side rather than sent from the browser. `x-forwarded-for`
+// is passed through (when a fronting proxy set it) so the backend rate limiter
+// can key on the real client IP rather than this proxy's address.
+const FORWARD_REQUEST_HEADERS = ['content-type', 'accept', 'x-forwarded-for'];
 
 async function handler(req: NextRequest) {
   const url = `${BACKEND_URL}${req.nextUrl.pathname}${req.nextUrl.search}`;

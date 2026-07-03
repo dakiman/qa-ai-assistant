@@ -123,6 +123,9 @@ See `backend/.env.example` for a copy-paste template.
 | `VALIDATION_ENABLED` | `true` | Enable two-stage requirements validation |
 | `CORS_ORIGINS` | `http://localhost:3000,...` | Comma-separated allowed origins |
 | `LOG_LEVEL` | `INFO` | Python log level |
+| `RATE_LIMIT_ENABLED` | `true` | Rate-limit the LLM endpoints (`generate`/`refine`); `false` disables (tests) |
+| `RATE_LIMIT_GENERATE` | `10/minute` | slowapi/limits syntax; limit for `POST /generate/` |
+| `RATE_LIMIT_REFINE` | `15/minute` | slowapi/limits syntax; limit for `POST /features/{id}/refine` |
 
 ### Frontend (`frontend/.env.local`)
 
@@ -300,7 +303,6 @@ file for exactly what is left.
 
 **Still open (structural suggestions + one deferred + one product call):**
 - No backend test suite (`backend/tests/` doesn't exist) — suggested improvement #1.
-- Rate limiting not implemented — suggested improvement #5.
 - Full unit-of-work / commit-once — suggested improvement #2 (partially done via M6).
 - L19 deferred: regenerating `api-types.ts` marks default-valued request fields as
   required; needs a generator/config fix before the intersection patches can drop.
@@ -312,7 +314,8 @@ the Edit-button placeholder; the feature-delete 500 (H1); `force_regenerate` des
 manual cases (H2); the write key shipping in the browser bundle (H10); the naive-datetime
 display skew (M2); silent mutation-error swallowing (M17, now a global toast); the dead
 "Edit Feature" button (M16, now wired). A **Regenerate** button now exists on the feature
-detail page. `current-state.md` has been reconciled against code (L27).
+detail page. `current-state.md` has been reconciled against code (L27). **Rate limiting**
+now guards `generate`/`refine` via slowapi (env-configurable `RATE_LIMIT_*`).
 
 ---
 

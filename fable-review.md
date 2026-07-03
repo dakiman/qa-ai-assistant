@@ -14,13 +14,14 @@
 
 **Everything High and Medium is DONE and merged to `main`, and now ALL Low findings are resolved except the deferred L19.** History: `fbb1c07` (High) → `db52166` (Medium) → `a20fa9c` (high-value Lows) → this pass (remaining Lows L1–L3, L5, L9–L11, L13–L14, L17, L20–L21, L23, L25–L30). All changes are **local commits only — not pushed**. The deployed stack (`/srv/dakis/apps/qa-ai-assistant/compose.yml`, ports 8010/3010) was rebuilt this pass and both containers report healthy; backend fixes were smoke-tested live (see per-item notes).
 
-**Still open — only the structural suggestions and the deferred L19 remain:**
+**Still open — two structural suggestions, the deferred L19, and one product call:**
 
-1. **Structural #1 — backend test suite.** `backend/tests/` still doesn't exist. Highest leverage: pytest over the routers with in-memory SQLite + mock LLM would lock in H1–H5, M5–M8, L13, and the migration behavior. All verified manually but with no regression net.
-2. **Structural #5 — rate limiting** on `generate`/`refine` (e.g. slowapi). Matters more now the API key isn't in the bundle.
-3. **Structural #2 — unit-of-work / commit-once.** Partially done: generate/refine now commit once (M6) via `commit=False` repo params, but the base repos still commit per-call elsewhere. A real UoW dependency would finish it.
-4. **L19 (deferred).** Regenerating `frontend/src/lib/api-types.ts` with openapi-typescript v7 marks default-valued request fields (`target_count`, `force_regenerate`, `skip_llm_validation`) as **required** even though the OpenAPI `required` array omits them — breaking ergonomic `generate` callers. Needs a generator/config fix (or an `Omit`+optional re-add in `api.ts`) before the intersection patches can be dropped.
-5. **Product decision (from L21):** the backend `DELETE` endpoints for features/test cases have no UI. The dead client hooks were removed this pass; wiring delete UI (with confirm dialogs) is a deliberate, still-open product choice.
+1. **Structural #1 — backend test suite.** `backend/tests/` still doesn't exist. Highest leverage: pytest over the routers with in-memory SQLite + mock LLM would lock in H1–H5, M5–M8, L13, rate limiting, and the migration behavior. All verified manually but with no regression net. *(Explicitly declined for now.)*
+2. **Structural #2 — unit-of-work / commit-once.** Partially done: generate/refine now commit once (M6) via `commit=False` repo params, but the base repos still commit per-call elsewhere. A real UoW dependency would finish it.
+3. **L19 (deferred).** Regenerating `frontend/src/lib/api-types.ts` with openapi-typescript v7 marks default-valued request fields (`target_count`, `force_regenerate`, `skip_llm_validation`) as **required** even though the OpenAPI `required` array omits them — breaking ergonomic `generate` callers. Needs a generator/config fix (or an `Omit`+optional re-add in `api.ts`) before the intersection patches can be dropped.
+4. **Product decision (from L21):** the backend `DELETE` endpoints for features/test cases have no UI. The dead client hooks were removed; wiring delete UI (with confirm dialogs) is a deliberate, still-open product choice.
+
+**Structural #5 — rate limiting — DONE:** `slowapi` (in-memory) now limits `POST /generate/` (default 10/min) and `POST /features/{id}/refine` (default 15/min), keyed API-key → `X-Forwarded-For` → peer address, env-configurable via `RATE_LIMIT_ENABLED`/`RATE_LIMIT_GENERATE`/`RATE_LIMIT_REFINE`, returning a 429 in the app's `{"detail": ...}` format. The Next proxy now forwards `x-forwarded-for`. Verified live: the 11th generate in a minute → 429 while refine kept its own bucket. This also blunts M5 (double-clicked generation).
 
 **Environment caveat (not a code bug):** the deployed backend runs `LLM_PROVIDER=openrouter` on a free model that fails instructor's tool-calling structured output (503 on real generate/validate). Use a tool-calling-capable model (anthropic/openai) or `mock` to exercise real generation. Switching instructor to `Mode.JSON` for the openrouter branch would fix free models but was declined this pass.
 
@@ -190,7 +191,7 @@ No `docker-compose.yml` / `docker-compose.dev.yml` exists in the repo or its git
 2. **Introduce a unit-of-work / commit-once pattern.** Repositories committing per-call (base.py) is the root cause of M6/H3. Have repositories `add`/`flush` and let the router (or a dependency) commit once per request.
 3. **Consolidate the API base + auth into the proxy.** The `/api/v1/[...path]` proxy makes the deployed setup same-origin; leaning on it fully (client always uses relative `/api/v1`, proxy injects the API key server-side) removes the CORS config, the `expose_headers` issues (L4), and the key exposure (H10) in one move.
 4. **Surface mutation errors globally.** A single toast provider wired into the TanStack mutation defaults (`onError` in `QueryProvider`) fixes M17 everywhere at once.
-5. **Rate limiting** (already on the known-issues list) matters more once the API key is no longer in the bundle; slowapi on generate/refine endpoints would also blunt M5.
+5. ✅ **DONE — Rate limiting.** `slowapi` limits `generate`/`refine` (env-configurable `RATE_LIMIT_*`), keyed API-key → XFF → peer, 429 in the app error format; also blunts M5. Verified live.
 6. **Reconcile the three run documents** into README (native + real deployment path), and regenerate CLAUDE.md's tree/env tables from the code.
 
 ---

@@ -16,6 +16,10 @@ openai==2.44.0
 instructor==1.15.4
 anthropic==0.115.1
 
+# Rate limiting (generate/refine endpoints)
+slowapi==0.1.9
+limits==3.13.0
+
 # Utilities
 python-dotenv==1.2.2
 pydantic==2.13.4

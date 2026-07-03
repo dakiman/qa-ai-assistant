@@ -54,6 +54,13 @@ class Settings(BaseSettings):
     # CORS
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     cors_allow_credentials: bool = True
+
+    # Rate limiting (slowapi, in-memory) — applied to the expensive LLM endpoints
+    # (generate / refine) to blunt runaway loops, double-clicks, and cost abuse.
+    # Values use slowapi/limits syntax, e.g. "10/minute", "100/hour;10/minute".
+    rate_limit_enabled: bool = True
+    rate_limit_generate: str = "10/minute"
+    rate_limit_refine: str = "15/minute"
     
     # Logging
     log_level: str = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
