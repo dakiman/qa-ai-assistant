@@ -27,12 +27,18 @@ async def lifespan(app: FastAPI):
     # Run database migrations
     # Note: For production, run migrations via CLI before deployment:
     #   alembic upgrade head
-    # Auto-migration on startup is useful for development
+    # Auto-migration on startup is useful for development. Under `--workers N`
+    # every worker runs this concurrently; Alembic serializes on the version
+    # table so it is safe, but prefer running migrations once via CLI at deploy
+    # time and leaving AUTO_MIGRATE for single-process dev.
     if settings.auto_migrate:
+        from pathlib import Path
         from alembic.config import Config
         from alembic import command
-        
-        alembic_cfg = Config("alembic.ini")
+
+        # Anchor to this file's directory so migrations resolve regardless of
+        # the CWD uvicorn was launched from.
+        alembic_cfg = Config(str(Path(__file__).parent / "alembic.ini"))
         command.upgrade(alembic_cfg, "head")
         logger.info("Database migrations applied successfully")
     else:

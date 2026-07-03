@@ -5,7 +5,7 @@ from sqlmodel import Session
 
 from auth import verify_api_key, verify_api_key_optional
 from database import get_session
-from exceptions import ResourceNotFoundError
+from exceptions import ResourceNotFoundError, ValidationError
 from models import (
     TestCaseStatus,
     TestCaseRead,
@@ -44,6 +44,13 @@ def refine_test_suite(
     5. New cases are saved to the database with is_edge_case=True
     6. Returns the complete refined test suite
     """
+    # The path parameter is authoritative. If the client also puts feature_id
+    # in the body, reject a mismatch rather than silently ignoring it.
+    if request.feature_id != feature_id:
+        raise ValidationError(
+            "feature_id in the request body must match the URL path parameter"
+        )
+
     # Get the feature
     feature = feature_repo.get(feature_id)
     if not feature:
@@ -111,7 +118,8 @@ def refine_test_suite(
     response = RefinementResponse(
         feature_id=feature_id,
         original_count=original_count,
-        new_count=len(all_case_reads),
+        # Number of newly-added cases (the total is derivable from test_cases).
+        new_count=edge_cases_added,
         edge_cases_added=edge_cases_added,
         refinement_count=feature.refinement_count,
         test_cases=all_case_reads,

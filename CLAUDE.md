@@ -149,6 +149,7 @@ qa-ai-assistant/
 │   ├── logging_config.py    # Structured logging + RequestIdMiddleware
 │   ├── auth.py              # X-API-Key verification dependencies
 │   ├── seed.py              # Default template seeding on startup
+│   ├── Dockerfile           # Backend image (non-root appuser, HEALTHCHECK)
 │   ├── requirements.txt
 │   ├── alembic.ini
 │   ├── alembic/versions/    # DB migration files
@@ -170,31 +171,45 @@ qa-ai-assistant/
 │       ├── export.py        # /api/v1/features/{id}/export
 │       └── links.py         # /api/v1/features/{id}/links
 │
-├── frontend/src/
-│   ├── app/                 # Next.js App Router pages
-│   │   ├── page.tsx         # Dashboard
-│   │   ├── features/        # Feature list, new, [id] detail
-│   │   └── templates/       # Template list, new, [id] edit
-│   ├── components/
-│   │   ├── ui/              # shadcn/ui primitives
-│   │   ├── layout/          # DashboardLayout, Sidebar
-│   │   ├── TestCaseCard.tsx
-│   │   ├── AddTestCaseDialog.tsx
-│   │   ├── TestCaseFilters.tsx
-│   │   ├── RefineActionBar.tsx
-│   │   ├── ExportButton.tsx
-│   │   ├── LinkManager.tsx
-│   │   └── LinkSelectorDialog.tsx
-│   ├── lib/
-│   │   ├── api.ts           # HTTP client (all API calls)
-│   │   ├── api-types.ts     # Auto-generated OpenAPI types
-│   │   ├── queries.ts       # All TanStack Query hooks
-│   │   └── utils.ts
-│   └── providers/
-│       └── QueryProvider.tsx
+├── frontend/
+│   ├── Dockerfile           # Frontend image (Next standalone, USER node, HEALTHCHECK)
+│   ├── scripts/
+│   │   └── generate-types.ts  # openapi.json → api-types.ts (needs a live backend)
+│   └── src/
+│       ├── app/                 # Next.js App Router pages
+│       │   ├── page.tsx         # Dashboard
+│       │   ├── features/        # Feature list, new, [id] detail
+│       │   ├── templates/       # Template list, new, [id] edit
+│       │   └── api/v1/[...path]/route.ts  # Server-side proxy → BACKEND_URL;
+│       │                        #   injects X-API-Key so the key never reaches the
+│       │                        #   browser (this is why NEXT_PUBLIC_API_URL can be
+│       │                        #   the relative "/api/v1"). See H10/M21.
+│       ├── components/
+│       │   ├── ui/              # shadcn/ui primitives
+│       │   ├── layout/          # DashboardLayout, Sidebar
+│       │   ├── TestCaseCard.tsx
+│       │   ├── AddTestCaseDialog.tsx
+│       │   ├── EditTestCaseDialog.tsx
+│       │   ├── EditFeatureDialog.tsx
+│       │   ├── TestCaseFilters.tsx
+│       │   ├── SearchInput.tsx
+│       │   ├── TemplateForm.tsx
+│       │   ├── ErrorBoundary.tsx
+│       │   ├── RefineActionBar.tsx
+│       │   ├── ExportButton.tsx
+│       │   ├── LinkManager.tsx
+│       │   └── LinkSelectorDialog.tsx
+│       ├── lib/
+│       │   ├── api.ts           # HTTP client (all API calls)
+│       │   ├── api-types.ts     # Auto-generated OpenAPI types
+│       │   ├── queries.ts       # All TanStack Query hooks
+│       │   └── utils.ts
+│       └── providers/
+│           └── QueryProvider.tsx
 │
 ├── CLAUDE.md                # This file
 ├── README.md
+├── run-project.md           # Native + Docker run instructions
 ├── IMPLEMENTATION_PLAN.md
 └── .claude/docs/            # Deep-dive documentation
     ├── architecture.md
@@ -278,24 +293,26 @@ Feature (raw_requirements)
 
 **The authoritative issue tracker is `fable-review.md`** (repo root) — a full-codebase
 review with per-item ✅ RESOLVED / ⚠️ DEFERRED status. Start there before picking up
-remediation work. As of 2026-07-02: **all High (H1–H13) and all Medium (M1–M26)
-findings are fixed and merged**, plus a high-value Low subset (L4, L6, L7, L8, L12,
-L15, L16, L18, L22, L24). See the "Handoff — remaining work" section at the top of
-that file for exactly what is left.
+remediation work. As of 2026-07-03: **all High (H1–H13), all Medium (M1–M26), and all
+Low findings (L1–L30) are fixed — the only deferred item is L19** (openapi-typescript v7
+required-field quirk). See the "Handoff — remaining work" section at the top of that
+file for exactly what is left.
 
-**Still open (not yet started):**
+**Still open (structural suggestions + one deferred + one product call):**
 - No backend test suite (`backend/tests/` doesn't exist) — suggested improvement #1.
 - Rate limiting not implemented — suggested improvement #5.
-- Remaining cosmetic/doc Low findings (L1–L3, L5, L9–L11, L13, L14, L17, L20, L21,
-  L23, L25–L30) and the deferred L19 (openapi-typescript v7 required-field quirk).
-- `.claude/docs/current-state.md` is partly stale (L27) — cross-check against code.
+- Full unit-of-work / commit-once — suggested improvement #2 (partially done via M6).
+- L19 deferred: regenerating `api-types.ts` marks default-valued request fields as
+  required; needs a generator/config fix before the intersection patches can drop.
+- Delete UI: backend `DELETE` endpoints for features/test cases exist but have no UI;
+  wiring it (with confirm dialogs) is an open product decision (see L21).
 
 **Recently resolved (no longer issues):** debug logging artifacts; frontend port 8001;
 the Edit-button placeholder; the feature-delete 500 (H1); `force_regenerate` destroying
 manual cases (H2); the write key shipping in the browser bundle (H10); the naive-datetime
 display skew (M2); silent mutation-error swallowing (M17, now a global toast); the dead
 "Edit Feature" button (M16, now wired). A **Regenerate** button now exists on the feature
-detail page.
+detail page. `current-state.md` has been reconciled against code (L27).
 
 ---
 

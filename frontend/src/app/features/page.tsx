@@ -78,7 +78,7 @@ export default function FeaturesPage() {
                     </Badge>
                   </div>
                   <CardDescription className="line-clamp-2">
-                    {feature.description || feature.raw_requirements.slice(0, 120)}
+                    {feature.description || feature.raw_requirements}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>

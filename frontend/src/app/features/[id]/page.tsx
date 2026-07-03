@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -127,9 +127,16 @@ export default function FeatureDetailPage() {
       response.test_cases
     );
     setRefinementMessage(response.message);
-    // Clear message after 5 seconds
-    setTimeout(() => setRefinementMessage(null), 5000);
   };
+
+  // Auto-dismiss the refinement message 5s after it appears. Keying the timer
+  // on the message value resets it on each new refinement (so a rapid second
+  // refinement isn't cut short by the first timer) and cleans up on unmount.
+  useEffect(() => {
+    if (!refinementMessage) return;
+    const timer = setTimeout(() => setRefinementMessage(null), 5000);
+    return () => clearTimeout(timer);
+  }, [refinementMessage]);
 
   // Calculate stats from all test cases (not filtered)
   const stats = {

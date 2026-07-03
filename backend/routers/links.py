@@ -1,9 +1,9 @@
 """Feature and test case link management endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 
 from auth import verify_api_key, verify_api_key_optional
-from exceptions import ResourceNotFoundError
+from exceptions import ResourceNotFoundError, ResourceConflictError, ValidationError
 from models import (
     FeatureLink,
     FeatureLinkCreate,
@@ -80,17 +80,11 @@ def create_feature_link(
     
     # Cannot link to self
     if feature_id == link_data.target_feature_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot link a feature to itself"
-        )
-    
+        raise ValidationError("Cannot link a feature to itself")
+
     # Check if link already exists
     if link_repo.check_feature_link_exists(feature_id, link_data.target_feature_id):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Link between these features already exists"
-        )
+        raise ResourceConflictError("Link between these features already exists")
     
     link = link_repo.create_feature_link(
         source_feature_id=feature_id,
@@ -131,18 +125,13 @@ def delete_feature_link(
     if not feature:
         raise ResourceNotFoundError("Feature", feature_id)
     
-    # Get the link
+    # Get the link. Treat a link that belongs to a different feature as
+    # not-found (404) rather than 403 so the endpoint doesn't leak the
+    # existence of links the caller has no path to.
     link = link_repo.get_feature_link(link_id)
-    if not link:
+    if not link or link.source_feature_id != feature_id:
         raise ResourceNotFoundError("Feature link", link_id)
-    
-    # Verify the link belongs to this feature
-    if link.source_feature_id != feature_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Link does not belong to this feature"
-        )
-    
+
     link_repo.delete_feature_link(link)
 
 
@@ -177,17 +166,11 @@ def create_test_case_link(
     
     # Cannot link to own test cases
     if test_case.feature_id == feature_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot link to test cases from the same feature"
-        )
-    
+        raise ValidationError("Cannot link to test cases from the same feature")
+
     # Check if link already exists
     if link_repo.check_test_case_link_exists(feature_id, link_data.test_case_id):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Link to this test case already exists"
-        )
+        raise ResourceConflictError("Link to this test case already exists")
     
     link = link_repo.create_test_case_link(
         feature_id=feature_id,
@@ -227,18 +210,12 @@ def delete_test_case_link(
     if not feature:
         raise ResourceNotFoundError("Feature", feature_id)
     
-    # Get the link
+    # Get the link. A link belonging to another feature is reported as
+    # not-found (404) rather than 403 to avoid leaking its existence.
     link = link_repo.get_test_case_link(link_id)
-    if not link:
+    if not link or link.feature_id != feature_id:
         raise ResourceNotFoundError("Test case link", link_id)
-    
-    # Verify the link belongs to this feature
-    if link.feature_id != feature_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Link does not belong to this feature"
-        )
-    
+
     link_repo.delete_test_case_link(link)
 
 

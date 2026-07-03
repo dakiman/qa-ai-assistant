@@ -1,6 +1,35 @@
 # Running QA-Craft
 
-## Quick Start (Two Terminals)
+> This project is **deployed on Linux via Docker** on dakis-server-v2. The Docker
+> path below is the default target for browser-testing UI changes; the native
+> two-terminal setup (further down) is for local development. The PowerShell
+> snippets are provided for Windows dev machines — on Linux/macOS use the bash
+> equivalents in the "macOS/Linux Commands" section.
+
+## Docker deployment (default target on this server)
+
+There is **no compose file inside this repo**. The deployment compose lives at
+`/srv/dakis/apps/qa-ai-assistant/compose.yml` and builds from this repo's
+`backend/` and `frontend/` dirs. Services and ports:
+
+| Service | Container | Host port → container |
+|---------|-----------|-----------------------|
+| `qa-ai-assistant-api` | `qa-ai-assistant-api` | **8010** → 8000 |
+| `qa-ai-assistant-web` | `qa-ai-assistant-web` | **3010** → 3000 |
+
+```bash
+cd /srv/dakis
+sg docker -c 'docker compose up -d --build qa-ai-assistant-api qa-ai-assistant-web'
+sg docker -c 'docker compose ps'
+```
+
+Both images are baked (no hot-reload) — **any `backend/` or `frontend/src/` change
+needs a rebuild + recreate** of the affected service. After a rebuild, wait for
+`http://localhost:8010/health` and `http://localhost:3010/` before testing.
+
+---
+
+## Quick Start (Two Terminals — native dev)
 
 ### Terminal 1: Backend (FastAPI)
 
@@ -73,7 +102,7 @@ npm run dev
 Create a `.env` file in the `backend/` directory to configure LLM providers:
 
 ```env
-# LLM Provider: "openai", "anthropic", or "mock"
+# LLM Provider: "openai", "anthropic", "openrouter", or "mock"
 LLM_PROVIDER=mock
 
 # OpenAI API Key (required if LLM_PROVIDER=openai)
@@ -81,6 +110,9 @@ OPENAI_API_KEY=your_openai_api_key_here
 
 # Anthropic API Key (required if LLM_PROVIDER=anthropic)
 ANTHROPIC_API_KEY=your_anthropic_api_key_here
+
+# OpenRouter API Key (required if LLM_PROVIDER=openrouter)
+OPENROUTER_API_KEY=your_openrouter_api_key_here
 
 # Database URL (defaults to SQLite)
 DATABASE_URL=sqlite:///./qa_craft.db

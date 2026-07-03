@@ -1,18 +1,24 @@
 """Application configuration using Pydantic settings."""
 
+from pathlib import Path
+
 from pydantic import model_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
+
+# Anchor the default SQLite file to the backend directory, not the CWD, so
+# launching uvicorn from the repo root doesn't silently create a second DB.
+_DEFAULT_DB_PATH = Path(__file__).resolve().parent / "qa_craft.db"
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
-    
+
     # Environment
     environment: str = "development"  # development, staging, production
-    
+
     # Database
-    database_url: str = "sqlite:///./qa_craft.db"
+    database_url: str = f"sqlite:///{_DEFAULT_DB_PATH}"
     db_echo: bool = False  # SQL query logging
     auto_migrate: bool = True  # Run Alembic migrations on startup (disable in production)
     
@@ -78,9 +84,10 @@ class Settings(BaseSettings):
             )
         return self
     
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
 
 
 @lru_cache

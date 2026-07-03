@@ -13,7 +13,6 @@ import { EditTestCaseDialog } from './EditTestCaseDialog';
 interface TestCaseCardProps {
   testCase: TestCase;
   onStatusChange?: (testCase: TestCase) => void;
-  onDelete?: (id: number) => void;
 }
 
 export function TestCaseCard({ testCase, onStatusChange }: TestCaseCardProps) {

@@ -382,7 +382,7 @@ class RefinementResponse(SQLModel):
     """Response schema for test suite refinement."""
     feature_id: int
     original_count: int
-    new_count: int
+    new_count: int  # Count of newly-added cases (== edge_cases_added)
     edge_cases_added: int
     refinement_count: int = 0
     test_cases: list[TestCaseRead]

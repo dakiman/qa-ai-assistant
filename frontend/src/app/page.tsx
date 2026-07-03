@@ -130,7 +130,7 @@ export default function Dashboard() {
                       </Badge>
                     </div>
                     <CardDescription className="line-clamp-2">
-                      {feature.description || feature.raw_requirements.slice(0, 100)}...
+                      {feature.description || feature.raw_requirements}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>

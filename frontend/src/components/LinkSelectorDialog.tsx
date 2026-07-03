@@ -27,10 +27,11 @@ import {
   Loader2,
   Check,
 } from 'lucide-react';
-import { 
-  useFeatures, 
+import {
+  useFeatures,
   useCreateFeatureLink,
   useCreateTestCaseLink,
+  queryKeys,
 } from '@/lib/queries';
 import { generateApi } from '@/lib/api';
 import { 
@@ -82,7 +83,10 @@ export function LinkSelectorDialog({
 
   // Fetch test cases for selected feature
   const { data: testCases = [], isLoading: testCasesLoading } = useQuery({
-    queryKey: ['features', selectedFeatureForTestCase, 'testCases', 'forLinking'],
+    // Derive from the shared factory (+ a 'forLinking' suffix) so this picker's
+    // cache stays a distinct entry yet still shares the feature testCases prefix
+    // for invalidation, instead of relying on an ad-hoc hand-built key.
+    queryKey: [...queryKeys.features.testCases(selectedFeatureForTestCase ?? -1), 'forLinking'],
     queryFn: () => generateApi.getFeatureTestCases(selectedFeatureForTestCase!),
     enabled: mode === 'test-case' && selectedFeatureForTestCase !== null,
   });
