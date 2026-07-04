@@ -65,13 +65,9 @@ def export_test_cases(
     if not feature:
         raise ResourceNotFoundError("Feature", feature_id)
     
-    # Get test cases
-    test_cases = test_case_repo.get_by_feature(feature_id)
-    
-    # Filter by status if provided
-    if status:
-        test_cases = [tc for tc in test_cases if tc.status == status]
-    
+    # Get test cases, filtering by status in SQL rather than in Python.
+    test_cases = test_case_repo.get_by_feature(feature_id, status=status)
+
     # Convert to read schemas
     test_case_reads = [TestCaseRead.from_orm_model(tc) for tc in test_cases]
     

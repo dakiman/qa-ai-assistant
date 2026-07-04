@@ -219,22 +219,6 @@ export function useUpdateFeature() {
   });
 }
 
-export function useDeleteFeature() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (id: number) => featureApi.delete(id),
-    onSuccess: (_, deletedId) => {
-      // Remove from cache
-      queryClient.removeQueries({
-        queryKey: queryKeys.features.detail(deletedId),
-      });
-      // Invalidate features list
-      queryClient.invalidateQueries({ queryKey: queryKeys.features.all });
-    },
-  });
-}
-
 // ============== Test Case Mutations ==============
 
 export function useCreateTestCase() {
@@ -266,21 +250,6 @@ export function useUpdateTestCase() {
       // Invalidate the feature's test cases list
       queryClient.invalidateQueries({
         queryKey: queryKeys.features.testCases(updatedTestCase.feature_id),
-      });
-    },
-  });
-}
-
-export function useDeleteTestCase() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({ id, featureId }: { id: number; featureId: number }) =>
-      testCaseApi.delete(id).then(() => featureId),
-    onSuccess: (featureId) => {
-      // Invalidate the feature's test cases
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.features.testCases(featureId),
       });
     },
   });

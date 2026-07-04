@@ -1,10 +1,16 @@
 """Structured logging configuration for QA-Craft."""
 
 import logging
+import re
 import sys
 import uuid
 from contextvars import ContextVar
 from typing import Optional
+
+# A client-supplied X-Request-ID is echoed into logs and the response header, so
+# only accept a conservative, bounded token to avoid log injection / unbounded
+# values. Anything else is replaced with a freshly generated ID.
+_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -28,8 +34,13 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next) -> Response:
         """Process request with a unique ID for tracing."""
-        # Get request ID from header or generate a new one
-        request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())[:8]
+        # Use a client-supplied request ID only if it matches the safe format;
+        # otherwise generate a full uuid4 hex (short slices risk collisions).
+        client_id = request.headers.get("X-Request-ID")
+        if client_id and _REQUEST_ID_RE.match(client_id):
+            request_id = client_id
+        else:
+            request_id = uuid.uuid4().hex
         
         # Set the context variable for this request
         token = request_id_ctx.set(request_id)

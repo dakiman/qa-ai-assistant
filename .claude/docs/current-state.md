@@ -1,14 +1,11 @@
 # QA-Craft — Current State
 
-Last assessed: 2026-04-28
+Last assessed: 2026-07-02
 
-> ⚠️ **STALE (as of 2026-07-02).** This file predates the Fable-review remediation
-> (all High + Medium findings and a high-value Low subset are now fixed and merged).
-> Several statements here are out of date (flagged as **L27** in the review — e.g. the
-> Edit-button and env-example claims, the OpenAI default, and the "Port Audit" that
-> describes the decommissioned old host). **Treat `fable-review.md` (repo root) as the
-> source of truth** for what's done vs. open, and verify anything here against the code
-> before relying on it. Reconciling this file is itself an open task (L27).
+> Reconciled against code on 2026-07-02 as part of the Fable-review Low remediation
+> (L27). All High + Medium findings and the Low findings are fixed and merged.
+> **`fable-review.md` (repo root) remains the authoritative tracker** for per-finding
+> status; this file summarizes the working/known-limitation state.
 
 ---
 
@@ -39,7 +36,8 @@ Last assessed: 2026-04-28
 - Feature detail page with test case grid, stats cards, filters
 - New feature page with multi-phase workflow (create → link → generate → review)
 - Template list, create, and edit pages
-- Test case accept/reject/reset actions with optimistic updates
+- Test case accept/reject/reset actions (mutation failures surface via a global toast)
+- Edit test case dialog (`EditTestCaseDialog`) and Edit feature dialog (`EditFeatureDialog`), both wired
 - Manual test case creation dialog
 - RefineActionBar (floating) with full-screen loading overlay, refinement counter badge, and warning after 3 iterations
 - Export button (JSON/CSV with status filter)
@@ -75,9 +73,9 @@ No debug artifacts remain in the codebase.
 
 ---
 
-### ~~BUG-3: No environment example files~~ — RESOLVED (2026-04-28)
+### ~~BUG-3: No environment example files~~ — RESOLVED (2026-07-02)
 
-Both `backend/.env.example` and `frontend/.env.local.example` exist and are tracked. The frontend file was previously caught by `frontend/.gitignore`'s `.env*` rule; an `!.env*.example` exemption was added so example templates are committed while real env files stay ignored.
+Both `backend/.env.example` and `frontend/.env.local.example` now exist and are tracked (created during the Fable-review H13 remediation — they had NOT actually been committed as of the 2026-04-28 assessment despite the earlier claim). The frontend file was previously caught by `frontend/.gitignore`'s `.env*` rule; an `!.env*.example` exemption was added so example templates are committed while real env files stay ignored.
 
 ---
 
@@ -85,11 +83,11 @@ Both `backend/.env.example` and `frontend/.env.local.example` exist and are trac
 
 | Item | Detail |
 |------|--------|
-| Edit test case | `Edit` button on `TestCaseCard.tsx` is rendered but has no handler — clicking does nothing |
-| Bulk delete | No bulk delete endpoint or UI |
-| Rate limiting | `slowapi` not installed; no rate limits on LLM endpoints |
+| ~~Edit test case~~ | RESOLVED — `TestCaseCard` now opens `EditTestCaseDialog`; feature edit uses `EditFeatureDialog` |
+| Delete from UI | Backend `DELETE` endpoints exist for features/test cases, but there is no delete affordance in the UI yet |
+| ~~Rate limiting~~ | RESOLVED — `slowapi` limits `generate` (10/min) and `refine` (15/min), env-configurable via `RATE_LIMIT_*` |
 | No tests | `backend/tests/` directory does not exist |
-| No docker-compose | No container setup for QA-Craft itself (only parent server has docker-compose) |
+| No in-repo compose | No compose file inside this repo; the deployment compose lives at `/srv/dakis/apps/qa-ai-assistant/compose.yml` (services `qa-ai-assistant-api`/`-web`, ports 8010/3010) |
 | ~~LLM model versions~~ | RESOLVED — defaults updated to current IDs (`gpt-4o`, `claude-sonnet-5`; validation `gpt-4o-mini`, `claude-haiku-4-5`) |
 
 ---
@@ -98,36 +96,28 @@ Both `backend/.env.example` and `frontend/.env.local.example` exist and are trac
 
 | File | Problem |
 |------|---------|
-| `.cursor/context.md` | Lists `repositories/` as "TODO" — already fully implemented |
-| `.cursor/context.md` | Lists `tests/` as "TODO" — still true but misleading alongside other "TODO"s |
+| `.cursor/context.md` | Reconciled 2026-07-02 (L28): fixed the `qa-ai-tool/` root name, flagged that `pytest`/`npm test` don't work yet, and documented the proxy/`BACKEND_URL` env design |
 | `IMPLEMENTATION_PLAN.md` | Phases 1–5 tasks all show unchecked `[ ]` but most are completed |
 
 ---
 
-## Port Audit (this server)
+## Ports (this server — dakis-server-v2)
 
-Ports confirmed free: **3000** (frontend), **8000** (backend)
+> The old "Port Audit" here described the decommissioned host and is gone.
 
-Ports in use by other services:
-- 8080 — open-webui
-- 8743 — dota2tracker web
-- 5474 — dota2tracker postgres
-- 11434 — Ollama
-- 19999 — Netdata
-- 3001, 8085, 8086, 8125, 8765 — other services
+- **Docker deployment (default target):** frontend **3010**, backend **8010**
+  (`/srv/dakis/apps/qa-ai-assistant/compose.yml`). Use these for browser testing.
+- **Native dev (venv + `npm run dev`):** frontend **3000**, backend **8000**.
+- Note: on this server **3000 is jira-rag**, so native dev and that service can't
+  both run — prefer the Docker ports for testing.
 
 ---
 
 ## Dependency Notes
 
-All dependencies in `backend/requirements.txt` are current:
-- `fastapi>=0.115.0` ✓
-- `sqlmodel>=0.0.22` ✓
-- `instructor>=1.5.0` ✓
-- `openai>=1.50.0` ✓
-- `anthropic>=0.40.0` ✓
-- `alembic>=1.13.0` ✓
+`backend/requirements.txt` is now **pinned to exact versions** (`==`) matching the
+tested image (M25) — no longer open-ended `>=` floors. Bump deliberately and re-test.
+`psycopg2-binary` is included for the PostgreSQL production path (H8).
 
-Missing test dependencies (if tests are added later):
-- `pytest>=8.0`
-- `httpx>=0.27`
+Test dependencies (still not present — no test suite yet):
+- `pytest`, `httpx` (for a FastAPI TestClient suite over the routers)

@@ -601,6 +601,26 @@ Always structure your response as a list of test cases with clear titles, steps,
                 ),
             ]
 
+        # Pad up to the requested count so mock mode honors the same
+        # target_count contract as the real providers (which are truncated to
+        # target_count). Previously mock could return fewer than requested when
+        # few keywords matched.
+        filler_idx = 1
+        while len(test_cases) < target_count:
+            test_cases.append(
+                TestCaseDraft(
+                    title=f"Verify additional scenario #{filler_idx}",
+                    steps=[
+                        "Set up the preconditions for this scenario",
+                        "Perform the action under test",
+                        "Verify the outcome against the requirements",
+                    ],
+                    expected_result="System behaves according to the specified requirements",
+                    is_edge_case=filler_idx % 2 == 0,
+                )
+            )
+            filler_idx += 1
+
         return test_cases[:target_count]
 
     def _generate_mock_refinements(

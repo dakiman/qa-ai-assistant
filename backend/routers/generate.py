@@ -1,11 +1,12 @@
 """Test case generation endpoints."""
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from sqlmodel import Session
 
 from auth import verify_api_key, verify_api_key_optional
 from database import get_session
 from exceptions import ResourceNotFoundError, ResourceConflictError
+from rate_limit import limiter, generate_limit
 from models import (
     GenerateRequest,
     GenerateResponse,
@@ -23,8 +24,10 @@ router = APIRouter(prefix="/generate", tags=["Generation"])
 
 
 @router.post("/", response_model=GenerateResponse)
+@limiter.limit(generate_limit)
 def generate_test_cases(
-    request: GenerateRequest,
+    request: Request,
+    payload: GenerateRequest,
     feature_repo: FeatureRepository = Depends(get_feature_repository),
     template_repo: TemplateRepository = Depends(get_template_repository),
     test_case_repo: TestCaseRepository = Depends(get_test_case_repository),
@@ -45,14 +48,14 @@ def generate_test_cases(
     in the LLM prompt for more informed test case generation.
     """
     # Get the feature
-    feature = feature_repo.get(request.feature_id)
+    feature = feature_repo.get(payload.feature_id)
     if not feature:
-        raise ResourceNotFoundError("Feature", request.feature_id)
+        raise ResourceNotFoundError("Feature", payload.feature_id)
 
     # Fast pre-check to avoid LLM cost on an obvious re-generate. The
     # authoritative, race-free guard is the atomic claim below.
     already_generated = feature.generation_count > 0
-    if already_generated and not request.force_regenerate:
+    if already_generated and not payload.force_regenerate:
         raise ResourceConflictError(
             "Test cases have already been generated for this feature. "
             "Set force_regenerate=true to delete existing drafts and regenerate."
@@ -63,19 +66,19 @@ def generate_test_cases(
     # raises 422 or the LLM errors below, the feature keeps its current drafts.
     validation_service.validate_requirements(
         feature.raw_requirements,
-        skip_llm=request.skip_llm_validation,
+        skip_llm=payload.skip_llm_validation,
     )
 
     # Get template if specified
     template_content = None
-    if request.template_id:
-        template = template_repo.get(request.template_id)
+    if payload.template_id:
+        template = template_repo.get(payload.template_id)
         if not template:
-            raise ResourceNotFoundError("Template", request.template_id)
+            raise ResourceNotFoundError("Template", payload.template_id)
         template_content = template.system_instructions
 
     # Get linked context for RAG
-    linked_context_data = link_repo.get_linked_context(request.feature_id)
+    linked_context_data = link_repo.get_linked_context(payload.feature_id)
     linked_context = llm_service.format_linked_context(
         linked_features=linked_context_data.linked_features,
         linked_test_cases=linked_context_data.linked_test_cases
@@ -86,14 +89,14 @@ def generate_test_cases(
         requirements=feature.raw_requirements,
         template_content=template_content,
         linked_context=linked_context if linked_context else None,
-        target_count=request.target_count
+        target_count=payload.target_count
     )
 
     # --- Single transaction: claim + swap drafts + insert + counter ---
     # Everything below is deferred (commit=False) and committed once at the end,
     # so a partial failure never leaves drafts persisted with a stale counter
     # (which used to cause a second suite to be appended on the next generate).
-    if not request.force_regenerate:
+    if not payload.force_regenerate:
         # Race-free guard: only one concurrent initial-generate wins the 0->1
         # claim. The loser did the (wasted) LLM call but must not double-insert.
         if not feature_repo.claim_initial_generation(feature.id):

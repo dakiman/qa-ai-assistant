@@ -6,6 +6,7 @@ from sqlmodel import Session, select
 import json
 
 from database import get_session
+from exceptions import ResourceNotFoundError
 from models import TestCase, TestCaseCreate, TestCaseUpdate, TestCaseStatus
 from repositories.base import BaseRepository, reject_null_fields
 
@@ -165,23 +166,31 @@ class TestCaseRepository(BaseRepository[TestCase]):
             
         Returns:
             Sequence of updated test cases
+
+        Raises:
+            ResourceNotFoundError: if any requested ID does not exist. The
+                update is atomic — nothing is changed unless every ID resolves,
+                rather than silently dropping unknown IDs.
         """
-        updated_cases = []
-        
-        for tc_id in test_case_ids:
-            test_case = self.session.get(TestCase, tc_id)
-            if test_case:
-                test_case.status = status
-                self.session.add(test_case)
-                updated_cases.append(test_case)
-        
+        if not test_case_ids:
+            return []
+
+        statement = select(TestCase).where(TestCase.id.in_(test_case_ids))
+        cases = self.session.exec(statement).all()
+
+        found_ids = {tc.id for tc in cases}
+        missing = [tc_id for tc_id in test_case_ids if tc_id not in found_ids]
+        if missing:
+            raise ResourceNotFoundError("Test case", missing[0])
+
+        for tc in cases:
+            tc.status = status
+            self.session.add(tc)
+
         self.session.commit()
-        
-        # Refresh all updated cases
-        for tc in updated_cases:
-            self.session.refresh(tc)
-        
-        return updated_cases
+
+        # Re-select in a single query instead of refreshing row-by-row (N+1).
+        return self.session.exec(statement).all()
     
     def delete_drafts(self, feature_id: int, commit: bool = True) -> int:
         """

@@ -42,6 +42,13 @@ export function AddTestCaseDialog({ featureId, onTestCaseAdded, trigger }: AddTe
     setError(null);
   };
 
+  // Clear form + error state whenever the dialog closes (Cancel, Esc, or overlay
+  // click) so a reopened dialog starts clean, matching EditTestCaseDialog.
+  const handleOpenChange = (next: boolean) => {
+    if (!next) resetForm();
+    setOpen(next);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -82,7 +89,7 @@ export function AddTestCaseDialog({ featureId, onTestCaseAdded, trigger }: AddTe
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {trigger || (
           <Button variant="outline" size="sm">
@@ -152,7 +159,7 @@ Check the email inbox`}
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={createMutation.isPending}>
+            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={createMutation.isPending}>
               Cancel
             </Button>
             <Button type="submit" disabled={createMutation.isPending}>

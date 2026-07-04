@@ -1,26 +1,34 @@
 """Database seeding functions for QA-Craft."""
 
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from database import engine
+from logging_config import get_logger
 from models import Template
+
+logger = get_logger(__name__)
 
 
 def seed_default_templates() -> bool:
     """
     Seed default templates if none exist in the database.
-    
+
     Uses proper context management for session handling.
-    
+
+    Safe to call from every worker on startup: the check-then-insert is racy
+    under ``--workers N``, so a concurrent seed that wins the race is tolerated
+    by catching IntegrityError and treating it as "already seeded".
+
     Returns:
         bool: True if templates were seeded, False if they already existed.
     """
     with Session(engine) as session:
         existing_template = session.exec(select(Template)).first()
-        
+
         if existing_template:
             return False
-        
+
         default_templates = [
             Template(
                 name="Standard Test Case",
@@ -52,7 +60,13 @@ def seed_default_templates() -> bool:
         
         for template in default_templates:
             session.add(template)
-        
-        session.commit()
+
+        try:
+            session.commit()
+        except IntegrityError:
+            # Another worker seeded first — not an error, just a lost race.
+            session.rollback()
+            logger.debug("Templates seeded concurrently by another worker")
+            return False
         return True
 

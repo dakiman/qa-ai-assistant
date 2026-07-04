@@ -1,11 +1,12 @@
 """Refinement engine endpoints."""
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from sqlmodel import Session
 
 from auth import verify_api_key, verify_api_key_optional
 from database import get_session
-from exceptions import ResourceNotFoundError
+from exceptions import ResourceNotFoundError, ValidationError
+from rate_limit import limiter, refine_limit
 from models import (
     TestCaseStatus,
     TestCaseRead,
@@ -22,9 +23,11 @@ router = APIRouter(prefix="/features", tags=["Refinement"])
 
 
 @router.post("/{feature_id}/refine", response_model=RefinementResponse)
+@limiter.limit(refine_limit)
 def refine_test_suite(
+    request: Request,
     feature_id: int,
-    request: RefinementRequest,
+    payload: RefinementRequest,
     feature_repo: FeatureRepository = Depends(get_feature_repository),
     template_repo: TemplateRepository = Depends(get_template_repository),
     test_case_repo: TestCaseRepository = Depends(get_test_case_repository),
@@ -44,6 +47,13 @@ def refine_test_suite(
     5. New cases are saved to the database with is_edge_case=True
     6. Returns the complete refined test suite
     """
+    # The path parameter is authoritative. If the client also puts feature_id
+    # in the body, reject a mismatch rather than silently ignoring it.
+    if payload.feature_id != feature_id:
+        raise ValidationError(
+            "feature_id in the request body must match the URL path parameter"
+        )
+
     # Get the feature
     feature = feature_repo.get(feature_id)
     if not feature:
@@ -52,10 +62,10 @@ def refine_test_suite(
     # Get template if specified. An invalid template_id is a client error —
     # 404 to match /generate, rather than silently ignoring the user's choice.
     template_content = None
-    if request.template_id:
-        template = template_repo.get(request.template_id)
+    if payload.template_id:
+        template = template_repo.get(payload.template_id)
         if not template:
-            raise ResourceNotFoundError("Template", request.template_id)
+            raise ResourceNotFoundError("Template", payload.template_id)
         template_content = template.system_instructions
     
     # Get all accepted and manual test cases
@@ -79,7 +89,7 @@ def refine_test_suite(
         accepted_cases=accepted_case_reads,
         template_content=template_content,
         linked_context=linked_context if linked_context else None,
-        max_new_cases=request.max_new_cases
+        max_new_cases=payload.max_new_cases
     )
 
     # Save new test cases + bump the counter in one transaction (commit=False),
@@ -111,7 +121,8 @@ def refine_test_suite(
     response = RefinementResponse(
         feature_id=feature_id,
         original_count=original_count,
-        new_count=len(all_case_reads),
+        # Number of newly-added cases (the total is derivable from test_cases).
+        new_count=edge_cases_added,
         edge_cases_added=edge_cases_added,
         refinement_count=feature.refinement_count,
         test_cases=all_case_reads,

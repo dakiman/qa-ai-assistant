@@ -1,18 +1,24 @@
 """Application configuration using Pydantic settings."""
 
+from pathlib import Path
+
 from pydantic import model_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
+
+# Anchor the default SQLite file to the backend directory, not the CWD, so
+# launching uvicorn from the repo root doesn't silently create a second DB.
+_DEFAULT_DB_PATH = Path(__file__).resolve().parent / "qa_craft.db"
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
-    
+
     # Environment
     environment: str = "development"  # development, staging, production
-    
+
     # Database
-    database_url: str = "sqlite:///./qa_craft.db"
+    database_url: str = f"sqlite:///{_DEFAULT_DB_PATH}"
     db_echo: bool = False  # SQL query logging
     auto_migrate: bool = True  # Run Alembic migrations on startup (disable in production)
     
@@ -48,6 +54,13 @@ class Settings(BaseSettings):
     # CORS
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     cors_allow_credentials: bool = True
+
+    # Rate limiting (slowapi, in-memory) — applied to the expensive LLM endpoints
+    # (generate / refine) to blunt runaway loops, double-clicks, and cost abuse.
+    # Values use slowapi/limits syntax, e.g. "10/minute", "100/hour;10/minute".
+    rate_limit_enabled: bool = True
+    rate_limit_generate: str = "10/minute"
+    rate_limit_refine: str = "15/minute"
     
     # Logging
     log_level: str = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
@@ -78,9 +91,10 @@ class Settings(BaseSettings):
             )
         return self
     
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
 
 
 @lru_cache

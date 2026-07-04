@@ -142,7 +142,7 @@ export function LinkManager({ featureId, className }: LinkManagerProps) {
                         key={link.id}
                         link={link}
                         onDelete={() => handleDeleteFeatureLink(link)}
-                        isDeleting={deleteFeatureLink.isPending}
+                        isDeleting={deleteFeatureLink.isPending && deleteFeatureLink.variables?.linkId === link.id}
                       />
                     ))}
                   </div>
@@ -161,7 +161,7 @@ export function LinkManager({ featureId, className }: LinkManagerProps) {
                         key={link.id}
                         link={link}
                         onDelete={() => handleDeleteTestCaseLink(link)}
-                        isDeleting={deleteTestCaseLink.isPending}
+                        isDeleting={deleteTestCaseLink.isPending && deleteTestCaseLink.variables?.linkId === link.id}
                       />
                     ))}
                   </div>

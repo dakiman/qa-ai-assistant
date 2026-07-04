@@ -72,8 +72,6 @@ export type GenerateResponse = components['schemas']['GenerateResponse'];
 export type RefinementRequest = components['schemas']['RefinementRequest'];
 export type RefinementResponse = components['schemas']['RefinementResponse'];
 
-export type BulkStatusUpdate = components['schemas']['BulkStatusUpdate'];
-
 /**
  * Filter parameters for test case listing.
  */
@@ -141,18 +139,6 @@ export const LINK_TYPE_LABELS: Record<FeatureLinkType, string> = {
   parent_of: 'Parent Of',
   child_of: 'Child Of',
 };
-
-// Feature stats is not in the OpenAPI spec as a schema, define locally
-export interface FeatureStats {
-  feature_id: number;
-  total: number;
-  draft: number;
-  accepted: number;
-  rejected: number;
-  edge_cases: number;
-  manual: number;
-  ready_for_refinement: number;
-}
 
 // ============== API Error Handling ==============
 
@@ -247,13 +233,6 @@ export const featureApi = {
     if (!response.ok) {
       throw new APIError(response.status, 'Failed to delete feature');
     }
-  },
-
-  async getStats(id: number): Promise<FeatureStats> {
-    const response = await fetch(`${API_BASE_URL}/features/${id}/stats`, {
-      headers: getHeaders(),
-    });
-    return handleResponse<FeatureStats>(response);
   },
 
   async export(

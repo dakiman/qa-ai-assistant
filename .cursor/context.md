@@ -62,7 +62,7 @@ Customizable system prompts for AI generation:
 ## Directory Structure
 
 ```
-qa-ai-tool/
+qa-ai-assistant/
 ├── backend/
 │   ├── main.py           # FastAPI app entry point
 │   ├── config.py         # Pydantic settings
@@ -130,24 +130,30 @@ cd frontend
 npm install
 npm run dev
 
-# Tests
-cd backend && pytest
-cd frontend && npm test
+# Tests — NOT YET IMPLEMENTED
+# There is no backend test suite (`backend/tests/` does not exist, pytest is not
+# a dependency) and no frontend test script. `pytest` / `npm test` will fail until
+# a suite is added. See fable-review.md "Suggested improvements #1".
 ```
 
 ## Environment Variables
 
 ```bash
-# Backend (.env)
+# Backend (.env) — see backend/.env.example for the full template
 DATABASE_URL=sqlite:///./qa_craft.db
-LLM_PROVIDER=mock  # or openai, anthropic
+LLM_PROVIDER=mock  # or openai, anthropic, openrouter
 OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
+OPENROUTER_API_KEY=sk-or-...
 ENVIRONMENT=development
 API_KEY=your-api-key
 
-# Frontend (.env.local)
-NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+# Frontend (.env.local) — see frontend/.env.local.example
+# Relative base → calls go through the Next proxy, which injects X-API-Key
+# server-side. BACKEND_URL is where the proxy forwards (the only var that
+# matters for the Dockerized frontend).
+NEXT_PUBLIC_API_URL=/api/v1
+BACKEND_URL=http://localhost:8000
 ```
 
 ## Coding Principles
