@@ -296,18 +296,17 @@ Feature (raw_requirements)
 
 **The authoritative issue tracker is `fable-review.md`** (repo root) — a full-codebase
 review with per-item ✅ RESOLVED / ⚠️ DEFERRED status. Start there before picking up
-remediation work. As of 2026-07-03: **all High (H1–H13), all Medium (M1–M26), and all
-Low findings (L1–L30) are fixed — the only deferred item is L19** (openapi-typescript v7
-required-field quirk). See the "Handoff — remaining work" section at the top of that
-file for exactly what is left.
+remediation work. As of 2026-07-04: **all High (H1–H13), all Medium (M1–M26), and all
+Low findings (L1–L30, including L19) are fixed.** L19 was resolved by regenerating
+`api-types.ts` with `defaultNonNullable: false` and dropping the intersection patches.
+See the "Handoff — remaining work" section at the top of that file for what remains.
 
-**Still open (structural suggestions + one deferred + one product call):**
-- No backend test suite (`backend/tests/` doesn't exist) — suggested improvement #1.
-- Full unit-of-work / commit-once — suggested improvement #2 (partially done via M6).
-- L19 deferred: regenerating `api-types.ts` marks default-valued request fields as
-  required; needs a generator/config fix before the intersection patches can drop.
+**Still open (structural suggestions + one product call — all captured in
+`.claude/docs/plans/2026-07-04-remaining-remediation.md`):**
+- No backend test suite (`backend/tests/` doesn't exist) — suggested improvement #1 (declined for now).
+- Full unit-of-work / commit-once — suggested improvement #2 (partially done via M6); plan Workstream C.
 - Delete UI: backend `DELETE` endpoints for features/test cases exist but have no UI;
-  wiring it (with confirm dialogs) is an open product decision (see L21).
+  wiring it (with confirm dialogs) is an open product decision (L21); plan Workstream B.
 
 **Recently resolved (no longer issues):** debug logging artifacts; frontend port 8001;
 the Edit-button placeholder; the feature-delete 500 (H1); `force_regenerate` destroying
