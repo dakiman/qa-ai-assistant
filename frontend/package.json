@@ -7,8 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "generate-types": "npx openapi-typescript http://localhost:8000/openapi.json -o src/lib/api-types.ts",
-    "generate-types:check": "npx ts-node scripts/generate-types.ts"
+    "generate-types": "npx ts-node -O '{\"module\":\"commonjs\"}' scripts/generate-types.ts",
+    "generate-types:check": "npx ts-node -O '{\"module\":\"commonjs\"}' scripts/generate-types.ts"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",

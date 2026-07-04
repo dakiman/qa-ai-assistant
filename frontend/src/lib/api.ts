@@ -30,12 +30,8 @@ function getHeaders(includeContentType = false): HeadersInit {
 // These types are derived from the auto-generated api-types.ts
 
 export type Feature = components['schemas']['FeatureRead'];
-export type FeatureCreate = components['schemas']['FeatureCreate'] & {
-  skip_llm_validation?: boolean;
-};
-export type FeatureUpdate = components['schemas']['FeatureUpdate'] & {
-  skip_llm_validation?: boolean;
-};
+export type FeatureCreate = components['schemas']['FeatureCreate'];
+export type FeatureUpdate = components['schemas']['FeatureUpdate'];
 
 export type Template = components['schemas']['TemplateRead'];
 export type TemplateCreate = components['schemas']['TemplateCreate'];
@@ -62,11 +58,7 @@ export interface ManualTestCaseInput {
   refinement_notes?: string | null;
 }
 
-export type GenerateRequest = components['schemas']['GenerateRequest'] & {
-  skip_llm_validation?: boolean;
-  target_count?: number;
-  force_regenerate?: boolean;
-};
+export type GenerateRequest = components['schemas']['GenerateRequest'];
 export type GenerateResponse = components['schemas']['GenerateResponse'];
 
 export type RefinementRequest = components['schemas']['RefinementRequest'];
