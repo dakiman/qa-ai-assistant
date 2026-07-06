@@ -109,9 +109,11 @@ def refine_test_suite(
         )
         edge_cases_added += 1
 
-    # Increment refinement counter, then commit the whole batch atomically.
+    # Increment refinement counter. The unit of work (get_session) commits the
+    # whole batch atomically when this handler returns; flush here so the
+    # refresh below sees the incremented counter.
     feature = feature_repo.increment_refinement_count(feature, commit=False)
-    session.commit()
+    session.flush()
     session.refresh(feature)
 
     # Fetch all test cases for the feature (including newly added ones)

@@ -41,10 +41,10 @@ class FeatureRepository(BaseRepository[Feature]):
             setattr(feature, key, value)
         
         self.session.add(feature)
-        self.session.commit()
+        self.session.flush()
         self.session.refresh(feature)
         return feature
-    
+
     def claim_initial_generation(self, feature_id: int) -> bool:
         """Atomically claim the first generation for a feature.
 
@@ -65,25 +65,23 @@ class FeatureRepository(BaseRepository[Feature]):
         return result.rowcount == 1
 
     def increment_generation_count(self, feature: Feature, commit: bool = True) -> Feature:
-        """Increment the generation counter. Set commit=False to defer to the caller."""
+        """Increment the generation counter.
+
+        The UoW (get_session) owns the commit; ``commit`` is ignored.
+        """
         feature.generation_count += 1
         self.session.add(feature)
-        if commit:
-            self.session.commit()
-            self.session.refresh(feature)
-        else:
-            self.session.flush()
+        self.session.flush()
         return feature
 
     def increment_refinement_count(self, feature: Feature, commit: bool = True) -> Feature:
-        """Increment the refinement counter. Set commit=False to defer to the caller."""
+        """Increment the refinement counter.
+
+        The UoW (get_session) owns the commit; ``commit`` is ignored.
+        """
         feature.refinement_count += 1
         self.session.add(feature)
-        if commit:
-            self.session.commit()
-            self.session.refresh(feature)
-        else:
-            self.session.flush()
+        self.session.flush()
         return feature
 
     def get_with_test_cases(self, id: int) -> Optional[Feature]:

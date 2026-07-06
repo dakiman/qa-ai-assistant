@@ -71,10 +71,10 @@ class TestCaseRepository(BaseRepository[TestCase]):
             setattr(test_case, key, value)
         
         self.session.add(test_case)
-        self.session.commit()
+        self.session.flush()
         self.session.refresh(test_case)
         return test_case
-    
+
     def update_status(self, test_case: TestCase, status: TestCaseStatus) -> TestCase:
         """
         Update the status of a test case.
@@ -88,7 +88,7 @@ class TestCaseRepository(BaseRepository[TestCase]):
         """
         test_case.status = status
         self.session.add(test_case)
-        self.session.commit()
+        self.session.flush()
         self.session.refresh(test_case)
         return test_case
     
@@ -187,7 +187,7 @@ class TestCaseRepository(BaseRepository[TestCase]):
             tc.status = status
             self.session.add(tc)
 
-        self.session.commit()
+        self.session.flush()
 
         # Re-select in a single query instead of refreshing row-by-row (N+1).
         return self.session.exec(statement).all()
@@ -217,8 +217,8 @@ class TestCaseRepository(BaseRepository[TestCase]):
         count = len(drafts)
         for draft in drafts:
             self.session.delete(draft)
-        if count > 0 and commit:
-            self.session.commit()
+        # The UoW (get_session) owns the commit; ``commit`` is ignored.
+        self.session.flush()
         return count
 
     def create_from_draft(
