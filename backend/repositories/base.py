@@ -80,21 +80,18 @@ class BaseRepository(Generic[ModelType]):
         """
         Create a new entity.
 
+        The request-scoped unit of work (get_session) owns the commit, so this
+        only flushes to assign the PK. ``commit`` is accepted for call-site
+        compatibility but ignored.
+
         Args:
             obj: Entity instance to create
-            commit: When False, flush (to populate the PK) but leave the
-                transaction open so the caller can commit several writes
-                atomically. Defaults to True for standalone callers.
 
         Returns:
             Created entity with ID populated
         """
         self.session.add(obj)
-        if commit:
-            self.session.commit()
-        else:
-            # flush assigns the primary key without ending the transaction
-            self.session.flush()
+        self.session.flush()  # assigns PK without ending the transaction
         self.session.refresh(obj)
         return obj
     
@@ -114,19 +111,19 @@ class BaseRepository(Generic[ModelType]):
             setattr(obj, key, value)
         
         self.session.add(obj)
-        self.session.commit()
+        self.session.flush()
         self.session.refresh(obj)
         return obj
-    
+
     def delete(self, obj: ModelType) -> None:
         """
         Delete an entity.
-        
+
         Args:
             obj: Entity instance to delete
         """
         self.session.delete(obj)
-        self.session.commit()
+        self.session.flush()
 
 
 

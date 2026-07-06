@@ -65,7 +65,7 @@ class TemplateRepository(BaseRepository[Template]):
             setattr(template, key, value)
         
         self.session.add(template)
-        self.session.commit()
+        self.session.flush()
         self.session.refresh(template)
         return template
 

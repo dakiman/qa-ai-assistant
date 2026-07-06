@@ -98,10 +98,13 @@ class LinkRepository:
         self.session.add(inverse_link)
 
         try:
-            self.session.commit()
+            # flush (not commit) so the UoW owns the transaction, but keep it
+            # inside this try: flush triggers the same IntegrityError as commit,
+            # so the unique-constraint 409 mapping below still fires.
+            self.session.flush()
         except IntegrityError:
             # The unique (source, target) constraint fired — another request
-            # created the same pair between our existence check and this commit
+            # created the same pair between our existence check and this flush
             # (TOCTOU). Surface it as a clean 409 instead of a 500.
             self.session.rollback()
             raise ResourceConflictError(
@@ -171,8 +174,8 @@ class LinkRepository:
 
         # Delete the primary link
         self.session.delete(link)
-        self.session.commit()
-        
+        self.session.flush()
+
         logger.info(
             "Deleted feature link: %d -[%s]-> %d (with inverse)",
             link.source_feature_id, link.link_type.value, link.target_feature_id
@@ -216,7 +219,9 @@ class LinkRepository:
         )
         self.session.add(link)
         try:
-            self.session.commit()
+            # flush (not commit) so the UoW owns the transaction, but keep it
+            # inside this try so the IntegrityError → 409 mapping still fires.
+            self.session.flush()
         except IntegrityError:
             # Unique (feature, test_case) constraint fired — concurrent create.
             self.session.rollback()
@@ -268,8 +273,8 @@ class LinkRepository:
     def delete_test_case_link(self, link: TestCaseLink) -> None:
         """Delete a test case link."""
         self.session.delete(link)
-        self.session.commit()
-        
+        self.session.flush()
+
         logger.info("Deleted test case link: feature %d -> test case %d", link.feature_id, link.test_case_id)
     
     def check_test_case_link_exists(
@@ -322,7 +327,7 @@ class LinkRepository:
         for link in referencing_tc_links:
             self.session.delete(link)
 
-        self.session.commit()
+        self.session.flush()
 
         logger.info("Deleted all links referencing feature %d", feature_id)
 

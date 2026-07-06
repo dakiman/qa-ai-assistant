@@ -124,7 +124,7 @@ def generate_test_cases(
         )
         saved_count += 1
 
-    session.commit()
+    # The unit of work (get_session) commits once when this handler returns.
 
     response = GenerateResponse(
         feature_id=feature.id,
