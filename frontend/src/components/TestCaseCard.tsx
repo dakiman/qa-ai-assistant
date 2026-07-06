@@ -5,8 +5,17 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
-import { Check, X, RotateCcw, Pencil, Sparkles, Info } from 'lucide-react';
-import { useAcceptTestCase, useRejectTestCase, useResetTestCase } from '@/lib/queries';
+import { useState } from 'react';
+import { Check, X, RotateCcw, Pencil, Sparkles, Info, Trash2, Loader2 } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { useAcceptTestCase, useRejectTestCase, useResetTestCase, useDeleteTestCase } from '@/lib/queries';
 import type { TestCase } from '@/lib/api';
 import { EditTestCaseDialog } from './EditTestCaseDialog';
 
@@ -22,6 +31,19 @@ export function TestCaseCard({ testCase, onStatusChange }: TestCaseCardProps) {
   const resetMutation = useResetTestCase();
 
   const loading = acceptMutation.isPending || rejectMutation.isPending || resetMutation.isPending;
+
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const deleteMutation = useDeleteTestCase();
+
+  const handleDelete = async () => {
+    try {
+      await deleteMutation.mutateAsync({ id: testCase.id, featureId: testCase.feature_id });
+      setConfirmDeleteOpen(false);
+    } catch (error) {
+      // Surfaced by the global mutation-error toast (MutationCache.onError).
+      console.error('Failed to delete test case:', error);
+    }
+  };
 
   const handleAccept = async () => {
     try {
@@ -186,8 +208,46 @@ export function TestCaseCard({ testCase, onStatusChange }: TestCaseCardProps) {
               </Button>
             }
           />
+
+          <Button
+            size="sm"
+            variant="ghost"
+            className="shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+            aria-label="Delete test case"
+            onClick={() => setConfirmDeleteOpen(true)}
+            disabled={loading || deleteMutation.isPending}
+          >
+            <Trash2 className="w-4 h-4" />
+          </Button>
         </div>
       </CardContent>
+
+      <Dialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete this test case?</DialogTitle>
+            <DialogDescription>
+              &ldquo;{testCase.title}&rdquo; will be permanently removed. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setConfirmDeleteOpen(false)}
+              disabled={deleteMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Deleting...</>
+              ) : (
+                <><Trash2 className="w-4 h-4 mr-2" />Delete</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

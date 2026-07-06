@@ -305,8 +305,6 @@ See the "Handoff — remaining work" section at the top of that file for what re
 `.claude/docs/plans/2026-07-04-remaining-remediation.md`):**
 - No backend test suite (`backend/tests/` doesn't exist) — suggested improvement #1 (declined for now).
 - Full unit-of-work / commit-once — suggested improvement #2 (partially done via M6); plan Workstream C.
-- Delete UI: backend `DELETE` endpoints for features/test cases exist but have no UI;
-  wiring it (with confirm dialogs) is an open product decision (L21); plan Workstream B.
 
 **Recently resolved (no longer issues):** debug logging artifacts; frontend port 8001;
 the Edit-button placeholder; the feature-delete 500 (H1); `force_regenerate` destroying
@@ -314,7 +312,9 @@ manual cases (H2); the write key shipping in the browser bundle (H10); the naive
 display skew (M2); silent mutation-error swallowing (M17, now a global toast); the dead
 "Edit Feature" button (M16, now wired). A **Regenerate** button now exists on the feature
 detail page. `current-state.md` has been reconciled against code (L27). **Rate limiting**
-now guards `generate`/`refine` via slowapi (env-configurable `RATE_LIMIT_*`).
+now guards `generate`/`refine` via slowapi (env-configurable `RATE_LIMIT_*`). **Delete UI**
+is now wired for test cases (per-card) and features (detail page), each behind a confirm
+dialog (L21, Workstream B).
 
 ---
 
