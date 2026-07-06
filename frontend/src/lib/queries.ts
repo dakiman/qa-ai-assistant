@@ -293,6 +293,20 @@ export function useRejectTestCase() {
   });
 }
 
+export function useDeleteTestCase() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, featureId }: { id: number; featureId: number }) =>
+      testCaseApi.delete(id).then(() => featureId),
+    onSuccess: (featureId) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.features.testCases(featureId),
+      });
+    },
+  });
+}
+
 export function useResetTestCase() {
   const queryClient = useQueryClient();
 
