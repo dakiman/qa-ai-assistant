@@ -219,6 +219,18 @@ export function useUpdateFeature() {
   });
 }
 
+export function useDeleteFeature() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: number) => featureApi.delete(id),
+    onSuccess: (_, deletedId) => {
+      queryClient.removeQueries({ queryKey: queryKeys.features.detail(deletedId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.features.all });
+    },
+  });
+}
+
 // ============== Test Case Mutations ==============
 
 export function useCreateTestCase() {

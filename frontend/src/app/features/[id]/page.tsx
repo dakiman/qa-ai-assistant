@@ -22,8 +22,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { ChevronLeft, Pencil, Check, Plus, ClipboardCheck, RefreshCw, Loader2 } from 'lucide-react';
-import { useFeature, useFeatureTestCases, useGenerateTestCases, queryKeys } from '@/lib/queries';
+import { ChevronLeft, Pencil, Check, Plus, ClipboardCheck, RefreshCw, Loader2, Trash2 } from 'lucide-react';
+import { useFeature, useFeatureTestCases, useGenerateTestCases, useDeleteFeature, queryKeys } from '@/lib/queries';
 import { useQueryClient } from '@tanstack/react-query';
 import type { TestCase, RefinementResponse, TestCaseFilters as Filters, TestCaseStatus } from '@/lib/api';
 
@@ -37,6 +37,19 @@ export default function FeatureDetailPage() {
   const [refinementMessage, setRefinementMessage] = useState<string | null>(null);
   const [regenerateDialogOpen, setRegenerateDialogOpen] = useState(false);
   const generateMutation = useGenerateTestCases();
+
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const deleteFeatureMutation = useDeleteFeature();
+
+  const handleDeleteFeature = async () => {
+    try {
+      await deleteFeatureMutation.mutateAsync(featureId);
+      router.push('/features');
+    } catch (err) {
+      // Global toast surfaces the failure.
+      console.error('Failed to delete feature:', err);
+    }
+  };
 
   // Parse filters from URL
   const filters: Filters = useMemo(() => ({
@@ -223,6 +236,14 @@ export default function FeatureDetailPage() {
               </Button>
             }
           />
+          <Button
+            variant="outline"
+            className="text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30"
+            onClick={() => setDeleteDialogOpen(true)}
+          >
+            <Trash2 className="w-4 h-4 mr-2" />
+            Delete
+          </Button>
         </div>
       </div>
 
@@ -407,6 +428,39 @@ export default function FeatureDetailPage() {
                   <RefreshCw className="w-4 h-4 mr-2" />
                   Regenerate
                 </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Feature Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete this feature?</DialogTitle>
+            <DialogDescription>
+              &ldquo;{feature.title}&rdquo; and its {stats.total} test case{stats.total === 1 ? '' : 's'}
+              {' '}(plus any links) will be permanently deleted. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={deleteFeatureMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteFeature}
+              disabled={deleteFeatureMutation.isPending}
+            >
+              {deleteFeatureMutation.isPending ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Deleting...</>
+              ) : (
+                <><Trash2 className="w-4 h-4 mr-2" />Delete Feature</>
               )}
             </Button>
           </DialogFooter>
