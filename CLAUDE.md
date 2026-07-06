@@ -255,7 +255,7 @@ Feature (raw_requirements)
 
 1. **Synchronous DB operations** — SQLModel's async support is immature; sync routes with FastAPI's thread pool is the correct choice. All route handlers use `def`, not `async def`.
 
-2. **Repository pattern** — All DB access goes through repository classes in `backend/repositories/`. Routers never touch the session directly.
+2. **Repository pattern + unit-of-work** — All DB access goes through repository classes in `backend/repositories/`. Routers never touch the session directly. `get_session` is a request-scoped unit of work: repositories only `add`/`flush` (never `commit`), and the session commits once when the handler returns or rolls back on any exception, so a whole request is one transaction (structural #2). The `commit=` params on some repo methods are accepted-but-ignored no-ops kept for call-site compatibility.
 
 3. **instructor library** — Forces LLM responses to match Pydantic schemas. If the LLM returns invalid JSON, instructor retries automatically (max 2).
 
@@ -301,10 +301,9 @@ Low findings (L1–L30, including L19) are fixed.** L19 was resolved by regenera
 `api-types.ts` with `defaultNonNullable: false` and dropping the intersection patches.
 See the "Handoff — remaining work" section at the top of that file for what remains.
 
-**Still open (structural suggestions + one product call — all captured in
+**Still open (one structural suggestion + one product call — all captured in
 `.claude/docs/plans/2026-07-04-remaining-remediation.md`):**
 - No backend test suite (`backend/tests/` doesn't exist) — suggested improvement #1 (declined for now).
-- Full unit-of-work / commit-once — suggested improvement #2 (partially done via M6); plan Workstream C.
 - Delete UI: backend `DELETE` endpoints for features/test cases exist but have no UI;
   wiring it (with confirm dialogs) is an open product decision (L21); plan Workstream B.
 
@@ -314,7 +313,9 @@ manual cases (H2); the write key shipping in the browser bundle (H10); the naive
 display skew (M2); silent mutation-error swallowing (M17, now a global toast); the dead
 "Edit Feature" button (M16, now wired). A **Regenerate** button now exists on the feature
 detail page. `current-state.md` has been reconciled against code (L27). **Rate limiting**
-now guards `generate`/`refine` via slowapi (env-configurable `RATE_LIMIT_*`).
+now guards `generate`/`refine` via slowapi (env-configurable `RATE_LIMIT_*`). **Unit-of-work /
+commit-once** is now finished (structural #2): `get_session` commits once per request and
+repositories only `flush` — see Architectural Decision #2.
 
 ---
 
