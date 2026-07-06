@@ -73,8 +73,20 @@ def init_db() -> None:
 
 
 def get_session():
-    """Dependency for getting database sessions."""
-    with Session(engine) as session:
+    """Request-scoped unit of work.
+
+    Yields a session, then commits once if the request handler returned
+    without raising, or rolls back if it raised. Repositories therefore only
+    add/flush — they must not commit — so a whole request is one transaction.
+    """
+    session = Session(engine)
+    try:
         yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 
