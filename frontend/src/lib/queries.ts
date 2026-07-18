@@ -238,7 +238,14 @@ export function useDeleteFeature() {
       // feature that no longer exists (404) and flashes an error card before the
       // route change lands. The page itself removes the detail query after
       // router.push (B4).
-      queryClient.invalidateQueries({ queryKey: queryKeys.features.all });
+      //
+      // `exact: true` is required here: queryKeys.features.all is ['features'],
+      // and invalidateQueries prefix-matches by default — without `exact`, this
+      // would also match (and refetch) the still-mounted detail page's
+      // ['features', id], ['features', id, 'links'], and
+      // ['features', id, 'testCases'] queries, reintroducing the exact 404 race
+      // this comment says we avoided (B4 follow-up).
+      queryClient.invalidateQueries({ queryKey: queryKeys.features.all, exact: true });
     },
   });
 }
