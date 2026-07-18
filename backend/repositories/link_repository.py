@@ -85,8 +85,7 @@ class LinkRepository:
             link_type=link_type,
             notes=notes
         )
-        self.session.add(primary_link)
-        
+
         # Create the inverse link for bidirectionality
         inverse_type = FeatureLinkType.get_inverse(link_type)
         inverse_link = FeatureLink(
@@ -95,18 +94,21 @@ class LinkRepository:
             link_type=inverse_type,
             notes=notes
         )
-        self.session.add(inverse_link)
 
         try:
-            # flush (not commit) so the UoW owns the transaction, but keep it
-            # inside this try: flush triggers the same IntegrityError as commit,
-            # so the unique-constraint 409 mapping below still fires.
-            self.session.flush()
+            # A SAVEPOINT (begin_nested), not a full session.rollback(): a
+            # duplicate-link 409 must only discard this insert, not the rest
+            # of the request's unit of work — a bare session.rollback() here
+            # would silently drop everything else the handler had staged in
+            # the same transaction (a lost-work hazard, not just this insert).
+            with self.session.begin_nested():
+                self.session.add(primary_link)
+                self.session.add(inverse_link)
+                self.session.flush()
         except IntegrityError:
             # The unique (source, target) constraint fired — another request
             # created the same pair between our existence check and this flush
             # (TOCTOU). Surface it as a clean 409 instead of a 500.
-            self.session.rollback()
             raise ResourceConflictError(
                 "Link between these features already exists"
             )
@@ -217,14 +219,14 @@ class LinkRepository:
             test_case_id=test_case_id,
             notes=notes
         )
-        self.session.add(link)
         try:
-            # flush (not commit) so the UoW owns the transaction, but keep it
-            # inside this try so the IntegrityError → 409 mapping still fires.
-            self.session.flush()
+            # SAVEPOINT instead of session.rollback() — see create_feature_link
+            # for why a full rollback here is a lost-work hazard.
+            with self.session.begin_nested():
+                self.session.add(link)
+                self.session.flush()
         except IntegrityError:
             # Unique (feature, test_case) constraint fired — concurrent create.
-            self.session.rollback()
             raise ResourceConflictError(
                 "Link to this test case already exists"
             )
