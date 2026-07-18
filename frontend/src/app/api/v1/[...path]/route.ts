@@ -5,10 +5,17 @@ const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000';
 const API_KEY = process.env.API_KEY || '';
 
 // Only these client request headers are forwarded upstream. The write key is
-// injected here server-side rather than sent from the browser. `x-forwarded-for`
-// is passed through (when a fronting proxy set it) so the backend rate limiter
-// can key on the real client IP rather than this proxy's address.
-const FORWARD_REQUEST_HEADERS = ['content-type', 'accept', 'x-forwarded-for'];
+// injected here server-side rather than sent from the browser.
+//
+// `x-forwarded-for` is deliberately NOT in this allowlist and is never set by
+// this proxy: it is fully client-controlled, and passing it through verbatim
+// would let a caller mint a fresh rate-limit bucket per request just by
+// sending a different value each time. This proxy is application code, not a
+// trusted network edge, so it has no verified client IP to vouch for. The
+// backend's rate limiter falls back to this proxy's own peer address plus the
+// injected `X-API-Key` — the normal, deployed keying mode (see
+// `backend/rate_limit.py`'s `_client_key` threat-model docstring).
+const FORWARD_REQUEST_HEADERS = ['content-type', 'accept'];
 
 async function handler(req: NextRequest) {
   const url = `${BACKEND_URL}${req.nextUrl.pathname}${req.nextUrl.search}`;

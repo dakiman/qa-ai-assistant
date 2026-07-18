@@ -21,4 +21,11 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# --no-proxy-headers: uvicorn's default (--proxy-headers, trusting XFF from
+# 127.0.0.1) would let any caller reaching this process from a trusted peer
+# rewrite request.client.host from a client-supplied X-Forwarded-For header —
+# silently bypassing the application-level TRUST_X_FORWARDED_FOR gate in
+# rate_limit.py, since that code trusts request.client.host as the untampered
+# fallback. Disabling it here makes settings.trust_x_forwarded_for the one and
+# only place XFF trust is decided.
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]

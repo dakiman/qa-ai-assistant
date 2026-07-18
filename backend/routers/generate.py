@@ -106,10 +106,20 @@ def generate_test_cases(
                 "Set force_regenerate=true to delete existing drafts and regenerate."
             )
     else:
-        # Force path: swap the old AI drafts for the new suite and bump counter.
+        # Force path: swap the old AI drafts for the new suite and bump the
+        # counter atomically. Two concurrent force_regenerate=true requests
+        # both pass the pre-check above, but only one wins this
+        # compare-and-swap (guarded against the count observed at the top of
+        # this handler) — the loser must not double-insert a second suite or
+        # silently lose the counter update.
         if already_generated:
             test_case_repo.delete_drafts(feature.id, commit=False)
-        feature_repo.increment_generation_count(feature, commit=False)
+        if not feature_repo.claim_generation(feature.id, observed_count=feature.generation_count):
+            session.rollback()
+            raise ResourceConflictError(
+                "Test case generation is already in progress for this feature. Please retry."
+            )
+        session.refresh(feature)
 
     saved_count = 0
     for draft in test_case_drafts:

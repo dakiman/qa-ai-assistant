@@ -287,6 +287,7 @@ class ValidationService:
                         {"role": "user", "content": user_prompt},
                     ],
                     system=_VALIDATION_SYSTEM_PROMPT,
+                    max_retries=2,
                 )
         except InstructorRetryException as exc:
             logger.error("LLM validation failed to return valid structure: %s", exc)
