@@ -30,13 +30,9 @@ import { useTemplates, useCreateFeature, useGenerateTestCases } from '@/lib/quer
 import type { TestCaseDraft } from '@/lib/api';
 import { ValidationAPIError } from '@/lib/api';
 import { LinkManager } from '@/components/LinkManager';
+import { NO_TEMPLATE_VALUE } from '@/lib/utils';
 
 type Phase = 'form' | 'linking' | 'generated';
-
-// Radix Select can't use "" as an item value (that's reserved for "no
-// selection" / the placeholder), so an explicit "clear back to default
-// prompt" choice needs its own sentinel (B5).
-export const NO_TEMPLATE_VALUE = '__none__';
 
 export default function NewFeaturePage() {
   const router = useRouter();

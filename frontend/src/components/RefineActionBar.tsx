@@ -3,12 +3,15 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { Sparkles, AlertTriangle } from 'lucide-react';
 import { useRefineTestSuite } from '@/lib/queries';
 import type { TestCase, RefinementResponse } from '@/lib/api';
 
 const REFINEMENT_WARNING_THRESHOLD = 3;
+const DEFAULT_MAX_NEW_CASES = 5;
 
 interface RefineActionBarProps {
   featureId: number;
@@ -19,6 +22,7 @@ interface RefineActionBarProps {
 
 export function RefineActionBar({ featureId, testCases, refinementCount, onRefinementComplete }: RefineActionBarProps) {
   const [error, setError] = useState<string | null>(null);
+  const [maxNewCases, setMaxNewCases] = useState(DEFAULT_MAX_NEW_CASES);
 
   // Mutation
   const refineMutation = useRefineTestSuite();
@@ -34,13 +38,14 @@ export function RefineActionBar({ featureId, testCases, refinementCount, onRefin
   const showWarning = refinementCount >= REFINEMENT_WARNING_THRESHOLD;
 
   const handleRefine = async () => {
-    if (readyCount === 0) return;
+    if (readyCount === 0 || maxNewCases < 1 || maxNewCases > 15) return;
 
     setError(null);
 
     try {
       const response = await refineMutation.mutateAsync({
         feature_id: featureId,
+        max_new_cases: maxNewCases,
       });
       onRefinementComplete(response);
     } catch (err) {
@@ -114,9 +119,30 @@ export function RefineActionBar({ featureId, testCases, refinementCount, onRefin
 
         <div className="hidden sm:block h-8 w-px bg-border" />
 
+        <div className="flex items-center gap-2">
+          <Label htmlFor="max-new-cases" className="text-sm text-muted-foreground whitespace-nowrap">
+            New cases (1–15)
+          </Label>
+          <Input
+            id="max-new-cases"
+            type="number"
+            min={1}
+            max={15}
+            value={maxNewCases}
+            onChange={(e) => setMaxNewCases(Number(e.target.value))}
+            disabled={refineMutation.isPending}
+            className="w-20"
+          />
+        </div>
+
         <Button
           onClick={handleRefine}
-          disabled={refineMutation.isPending || readyCount === 0}
+          disabled={
+            refineMutation.isPending ||
+            readyCount === 0 ||
+            maxNewCases < 1 ||
+            maxNewCases > 15
+          }
           className="glow-teal"
         >
           <Sparkles className="w-4 h-4 mr-2" />

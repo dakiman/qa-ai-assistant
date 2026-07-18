@@ -25,7 +25,12 @@ interface EditFeatureDialogProps {
 
 export function EditFeatureDialog({ feature, trigger }: EditFeatureDialogProps) {
   const [open, setOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<
+    | { kind: 'simple'; message: string }
+    | { kind: 'validation'; issues: string[]; suggestions: string[] }
+    | null
+  >(null);
+  const [skipLlmValidation, setSkipLlmValidation] = useState(false);
 
   const [title, setTitle] = useState(feature.title);
   const [description, setDescription] = useState(feature.description ?? '');
@@ -41,6 +46,7 @@ export function EditFeatureDialog({ feature, trigger }: EditFeatureDialogProps) 
       setDescription(feature.description ?? '');
       setRawRequirements(feature.raw_requirements);
       setError(null);
+      setSkipLlmValidation(false);
     }
     setOpen(next);
   };
@@ -49,11 +55,14 @@ export function EditFeatureDialog({ feature, trigger }: EditFeatureDialogProps) 
     e.preventDefault();
 
     if (!title.trim() || !rawRequirements.trim()) {
-      setError('Title and requirements are required');
+      setError({ kind: 'simple', message: 'Title and requirements are required' });
       return;
     }
 
     setError(null);
+    // Capture and reset the bypass flag so it doesn't silently carry to future edits.
+    const bypassLlm = skipLlmValidation;
+    setSkipLlmValidation(false);
 
     try {
       await updateMutation.mutateAsync({
@@ -62,14 +71,19 @@ export function EditFeatureDialog({ feature, trigger }: EditFeatureDialogProps) 
           title: title.trim(),
           description: description.trim() || null,
           raw_requirements: rawRequirements.trim(),
+          skip_llm_validation: bypassLlm,
         },
       });
       setOpen(false);
     } catch (err) {
       if (err instanceof ValidationAPIError) {
-        setError(err.issues.join(' '));
+        setError({ kind: 'validation', issues: err.issues, suggestions: err.suggestions });
       } else {
-        setError(err instanceof Error ? err.message : 'Failed to update feature');
+        setSkipLlmValidation(false);
+        setError({
+          kind: 'simple',
+          message: err instanceof Error ? err.message : 'Failed to update feature',
+        });
       }
     }
   };
@@ -92,8 +106,38 @@ export function EditFeatureDialog({ feature, trigger }: EditFeatureDialogProps) 
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
-            <div className="bg-destructive/10 border border-destructive/50 rounded-lg p-3">
-              <p className="text-sm text-destructive">{error}</p>
+            <div className="bg-destructive/10 border border-destructive/50 rounded-lg p-3 space-y-2">
+              {error.kind === 'validation' ? (
+                <>
+                  <ul className="list-disc list-inside space-y-1">
+                    {error.issues.map((issue, i) => (
+                      <li key={i} className="text-sm text-destructive">{issue}</li>
+                    ))}
+                  </ul>
+                  {error.suggestions.length > 0 && (
+                    <ul className="text-sm text-muted-foreground space-y-1">
+                      {error.suggestions.map((suggestion, i) => (
+                        <li key={i}>{suggestion}</li>
+                      ))}
+                    </ul>
+                  )}
+                  <div className="pt-1 border-t border-destructive/20">
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={skipLlmValidation}
+                        onChange={(e) => setSkipLlmValidation(e.target.checked)}
+                        className="rounded border-destructive/50 accent-destructive"
+                      />
+                      <span className="text-sm text-muted-foreground">
+                        Proceed anyway — skip AI quality check and save as-is
+                      </span>
+                    </label>
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-destructive">{error.message}</p>
+              )}
             </div>
           )}
 

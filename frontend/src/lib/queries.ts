@@ -146,6 +146,9 @@ export function useCreateTemplate() {
 
   return useMutation({
     mutationFn: (data: TemplateCreate) => templateApi.create(data),
+    // TemplateForm already renders this failure inline — don't double-surface
+    // it via the global toast (B6).
+    meta: { suppressGlobalToast: true },
     onSuccess: () => {
       // Invalidate and refetch templates list
       queryClient.invalidateQueries({ queryKey: queryKeys.templates.all });
@@ -159,6 +162,8 @@ export function useUpdateTemplate() {
   return useMutation({
     mutationFn: ({ id, data }: { id: number; data: TemplateUpdate }) =>
       templateApi.update(id, data),
+    // TemplateForm already renders this failure inline (B6).
+    meta: { suppressGlobalToast: true },
     onSuccess: (updatedTemplate) => {
       // Update the template in cache
       queryClient.setQueryData(
@@ -207,6 +212,8 @@ export function useUpdateFeature() {
   return useMutation({
     mutationFn: ({ id, data }: { id: number; data: Partial<FeatureCreate> }) =>
       featureApi.update(id, data),
+    // EditFeatureDialog already renders this failure inline (B6).
+    meta: { suppressGlobalToast: true },
     onSuccess: (updatedFeature) => {
       // Update the feature in cache
       queryClient.setQueryData(
@@ -243,6 +250,8 @@ export function useCreateTestCase() {
 
   return useMutation({
     mutationFn: (data: ManualTestCaseInput) => testCaseApi.create(data),
+    // AddTestCaseDialog already renders this failure inline (B6).
+    meta: { suppressGlobalToast: true },
     onSuccess: (newTestCase) => {
       // Invalidate the feature's test cases
       queryClient.invalidateQueries({
@@ -258,6 +267,8 @@ export function useUpdateTestCase() {
   return useMutation({
     mutationFn: ({ id, data }: { id: number; data: TestCaseUpdate }) =>
       testCaseApi.update(id, data),
+    // EditTestCaseDialog already renders this failure inline (B6).
+    meta: { suppressGlobalToast: true },
     onSuccess: (updatedTestCase) => {
       // Update test case in cache
       queryClient.setQueryData(
@@ -372,6 +383,8 @@ export function useRefineTestSuite() {
   return useMutation({
     mutationFn: (data: RefinementRequest): Promise<RefinementResponse> =>
       refineApi.refineTestSuite(data),
+    // RefineActionBar already renders this failure inline (B6).
+    meta: { suppressGlobalToast: true },
     onSuccess: (response, variables) => {
       // Update the test cases in cache with the refined results
       queryClient.setQueryData(
