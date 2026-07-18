@@ -84,6 +84,11 @@ class Feature(FeatureBase, table=True):
 
 class FeatureCreate(FeatureBase):
     """Schema for creating a Feature."""
+    # Length caps on the API schema only (not FeatureBase/Feature) so this
+    # doesn't touch the table column type and doesn't need a migration.
+    title: str = Field(index=True, max_length=300)
+    description: Optional[str] = Field(default=None, max_length=5000)
+    raw_requirements: str = Field(max_length=20000)
     skip_llm_validation: bool = False
 
 
@@ -102,9 +107,9 @@ class FeatureRead(FeatureBase):
 
 class FeatureUpdate(SQLModel):
     """Schema for updating a Feature."""
-    title: Optional[str] = None
-    description: Optional[str] = None
-    raw_requirements: Optional[str] = None
+    title: Optional[str] = Field(default=None, max_length=300)
+    description: Optional[str] = Field(default=None, max_length=5000)
+    raw_requirements: Optional[str] = Field(default=None, max_length=20000)
     skip_llm_validation: bool = False
 
 
@@ -143,7 +148,7 @@ class FeatureLinkCreate(SQLModel):
     """Schema for creating a feature link."""
     target_feature_id: int
     link_type: FeatureLinkType
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(default=None, max_length=1000)
 
 
 class FeatureLinkRead(SQLModel):
@@ -193,7 +198,7 @@ class TestCaseLink(SQLModel, table=True):
 class TestCaseLinkCreate(SQLModel):
     """Schema for creating a test case link."""
     test_case_id: int
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(default=None, max_length=1000)
 
 
 class TestCaseLinkRead(SQLModel):
@@ -250,11 +255,30 @@ class TemplateRead(TemplateBase):
 
 class TemplateUpdate(SQLModel):
     """Schema for updating a Template."""
-    name: Optional[str] = None
-    system_instructions: Optional[str] = None
+    # Re-cap to match TemplateBase — a PATCH previously bypassed the caps
+    # TemplateBase enforces on create (L15's protection had a PATCH-shaped hole).
+    name: Optional[str] = Field(default=None, max_length=200)
+    system_instructions: Optional[str] = Field(default=None, max_length=10000)
 
 
 # ============== TestCase Models ==============
+
+# Bounds for step lists on the API schemas only (the table column stores
+# steps as a single JSON-encoded string, so these are enforced in Pydantic,
+# not via a column length that would need a migration).
+MAX_TEST_CASE_STEPS = 50
+MAX_TEST_CASE_STEP_LENGTH = 2000
+
+
+def _validate_test_case_steps(steps: list[str]) -> list[str]:
+    """Shared bounds check for TestCaseCreate/TestCaseUpdate.steps."""
+    if len(steps) > MAX_TEST_CASE_STEPS:
+        raise ValueError(f"steps cannot exceed {MAX_TEST_CASE_STEPS} items")
+    for step in steps:
+        if len(step) > MAX_TEST_CASE_STEP_LENGTH:
+            raise ValueError(f"each step must be at most {MAX_TEST_CASE_STEP_LENGTH} characters")
+    return steps
+
 
 class TestCaseBase(SQLModel):
     """Base TestCase model with shared fields."""
@@ -293,14 +317,19 @@ class TestCase(TestCaseBase, table=True):
 
 class TestCaseCreate(SQLModel):
     """Schema for creating a TestCase."""
-    title: str
+    title: str = Field(max_length=500)
     steps: list[str]  # Accept as list, convert to JSON
-    expected_result: str
+    expected_result: str = Field(max_length=5000)
     is_edge_case: bool = False
     is_manual: bool = False
     refinement_notes: Optional[str] = None
     status: TestCaseStatus = TestCaseStatus.DRAFT
     feature_id: int
+
+    @field_validator("steps")
+    @classmethod
+    def _check_steps(cls, v: list[str]) -> list[str]:
+        return _validate_test_case_steps(v)
 
 
 class TestCaseRead(SQLModel):
@@ -333,13 +362,20 @@ class TestCaseRead(SQLModel):
 
 class TestCaseUpdate(SQLModel):
     """Schema for updating a TestCase."""
-    title: Optional[str] = None
+    title: Optional[str] = Field(default=None, max_length=500)
     steps: Optional[list[str]] = None
-    expected_result: Optional[str] = None
+    expected_result: Optional[str] = Field(default=None, max_length=5000)
     is_edge_case: Optional[bool] = None
     is_manual: Optional[bool] = None
     refinement_notes: Optional[str] = None
     status: Optional[TestCaseStatus] = None
+
+    @field_validator("steps")
+    @classmethod
+    def _check_steps(cls, v: Optional[list[str]]) -> Optional[list[str]]:
+        if v is None:
+            return v
+        return _validate_test_case_steps(v)
 
 
 # ============== LLM Response Schemas ==============

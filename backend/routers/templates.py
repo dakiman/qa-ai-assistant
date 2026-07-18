@@ -1,6 +1,6 @@
 """Template CRUD endpoints."""
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from typing import Sequence
 
 from auth import verify_api_key, verify_api_key_optional
@@ -33,8 +33,8 @@ def create_template(
 
 @router.get("/", response_model=list[TemplateRead])
 def list_templates(
-    skip: int = 0, 
-    limit: int = 100, 
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=200),
     repo: TemplateRepository = Depends(get_template_repository),
     _: str | None = Depends(verify_api_key_optional)
 ) -> Sequence[Template]:

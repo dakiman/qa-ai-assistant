@@ -131,7 +131,8 @@ class TestCaseRepository(BaseRepository[TestCase]):
             statement = statement.where(
                 TestCase.title.icontains(search, autoescape=True)
             )
-        
+
+        statement = statement.order_by(TestCase.id)
         return self.session.exec(statement).all()
     
     def get_accepted_and_manual(self, feature_id: int) -> Sequence[TestCase]:
