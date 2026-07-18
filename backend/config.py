@@ -61,7 +61,13 @@ class Settings(BaseSettings):
     rate_limit_enabled: bool = True
     rate_limit_generate: str = "10/minute"
     rate_limit_refine: str = "15/minute"
-    
+
+    # Trust `X-Forwarded-For` for rate-limit keying only when a trusted proxy
+    # actually sets it (e.g. a reverse proxy that overwrites, not appends to,
+    # the header). Off by default: an unverified XFF is client-controlled and
+    # lets a caller mint a fresh rate-limit bucket per request.
+    trust_x_forwarded_for: bool = False
+
     # Logging
     log_level: str = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
     
