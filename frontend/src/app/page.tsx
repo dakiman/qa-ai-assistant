@@ -119,7 +119,10 @@ export default function Dashboard() {
           </Card>
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
-            {features.slice(0, 4).map((feature) => (
+            {[...features]
+              .sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at))
+              .slice(0, 4)
+              .map((feature) => (
               <Link key={feature.id} href={`/features/${feature.id}`}>
                 <Card className="card-hover cursor-pointer h-full">
                   <CardHeader>
