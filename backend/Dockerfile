@@ -5,13 +5,13 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
-
 # Run as a non-root user whose uid matches the host bind-mount owner
 # (/srv/dakis/data/qa-ai-assistant is uid 1000), so the container can write the
-# SQLite DB at /data without running as root.
-RUN useradd --create-home --uid 1000 appuser \
-    && chown -R appuser:appuser /app
+# SQLite DB at /data without running as root. App code is read-only at runtime
+# (only /data needs appuser writes), so COPY --chown avoids a full-tree chown
+# layer on top of the plain copy.
+RUN useradd --create-home --uid 1000 appuser
+COPY --chown=appuser:appuser . .
 USER appuser
 
 EXPOSE 8000

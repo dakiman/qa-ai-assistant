@@ -52,4 +52,7 @@ htmlcov/
 *.bak
 *.tmp
 
+# Headless-playwright screenshots land in the cwd during browser testing
+*.png
+
 .claude/settings.local.json
