@@ -126,7 +126,7 @@ generate request
     ▼
 ValidationService.validate_requirements()
     ├─ Stage 1: rule-based (length, words, alpha ratio, code detection) — always runs
-    └─ Stage 2: LLM semantic (gpt-4o-mini / claude-3-haiku) — skippable via skip_llm=True
+    └─ Stage 2: LLM semantic (gpt-4o-mini / claude-haiku-4-5) — skippable via skip_llm=True
     │
     ▼
 Generation guard check:
@@ -318,6 +318,9 @@ Ready
 
 | Revision | Date | Description |
 |----------|------|-------------|
-| Initial | 2025-12-21 | feature, template, testcase tables |
-| Links | 2026-02-21 | feature_link, test_case_link tables |
-| Gen counts | 2026-03-25 | generation_count, refinement_count on feature table |
+| `d3f7b66295cd` | 2025-12-21 | Initial migration — feature, template, testcase tables |
+| `a1b2c3d4e5f6` | 2026-02-21 | Add feature and test case link tables |
+| `b2c3d4e5f6g7` | 2026-03-25 | Add generation_count, refinement_count to feature table |
+| `c3d4e5f6a7b8` | 2026-07-02 | Make created_at columns timezone-aware (Postgres only) |
+| `d4e5f6a7b8c9` | 2026-07-02 | Add unique constraints on link pairs (dedupes existing rows first) |
+| `e5f6a7b8c9d0` | 2026-07-02 | Add index on testcase.feature_id |

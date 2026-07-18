@@ -84,7 +84,7 @@ Both `backend/.env.example` and `frontend/.env.local.example` now exist and are 
 | Item | Detail |
 |------|--------|
 | ~~Edit test case~~ | RESOLVED — `TestCaseCard` now opens `EditTestCaseDialog`; feature edit uses `EditFeatureDialog` |
-| Delete from UI | Backend `DELETE` endpoints exist for features/test cases, but there is no delete affordance in the UI yet |
+| ~~Delete from UI~~ | RESOLVED — `TestCaseCard` has a per-card delete button (confirm dialog) and the feature detail page has a delete-feature button (confirm dialog), both wired to the backend `DELETE` endpoints (L21) |
 | ~~Rate limiting~~ | RESOLVED — `slowapi` limits `generate` (10/min) and `refine` (15/min), env-configurable via `RATE_LIMIT_*` |
 | No tests | `backend/tests/` directory does not exist |
 | No in-repo compose | No compose file inside this repo; the deployment compose lives at `/srv/dakis/apps/qa-ai-assistant/compose.yml` (services `qa-ai-assistant-api`/`-web`, ports 8010/3010) |
