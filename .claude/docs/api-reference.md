@@ -134,6 +134,8 @@ Create a manual test case.
 }
 ```
 Length caps: `title` ≤500, `expected_result` ≤5000, `steps` ≤50 items × 2000 chars each.
+The server always forces `is_manual=true` on this endpoint (manual-entry provenance is not
+client-controllable); a sent `is_manual: false` is overridden.
 
 **Response 201:** TestCaseRead
 **Response 404:** `feature_id` does not reference an existing feature

@@ -85,7 +85,7 @@ Both `backend/.env.example` and `frontend/.env.local.example` now exist and are 
 |------|--------|
 | ~~Edit test case~~ | RESOLVED — `TestCaseCard` now opens `EditTestCaseDialog`; feature edit uses `EditFeatureDialog` |
 | ~~Delete from UI~~ | RESOLVED — `TestCaseCard` has a per-card delete button (confirm dialog) and the feature detail page has a delete-feature button (confirm dialog), both wired to the backend `DELETE` endpoints (L21) |
-| ~~Rate limiting~~ | RESOLVED — `slowapi` limits `generate` (10/min) and `refine` (15/min), env-configurable via `RATE_LIMIT_*` |
+| ~~Rate limiting~~ | RESOLVED — `slowapi` limits `generate` (10/min) and `refine` (15/min), env-configurable via `RATE_LIMIT_*`. Keying hardened 2026-07-18: `X-API-Key` only counts after a constant-time match, `X-Forwarded-For` only behind `TRUST_X_FORWARDED_FOR=true` (uvicorn runs `--no-proxy-headers`), fallback is the peer address |
 | No tests | `backend/tests/` directory does not exist |
 | No in-repo compose | No compose file inside this repo; the deployment compose lives at `/srv/dakis/apps/qa-ai-assistant/compose.yml` (services `qa-ai-assistant-api`/`-web`, ports 8010/3010) |
 | ~~LLM model versions~~ | RESOLVED — defaults updated to current IDs (`gpt-4o`, `claude-sonnet-5`; validation `gpt-4o-mini`, `claude-haiku-4-5`) |

@@ -133,6 +133,7 @@ See `backend/.env.example` for a copy-paste template.
 | `RATE_LIMIT_ENABLED` | `true` | Rate-limit the LLM endpoints (`generate`/`refine`); `false` disables (tests) |
 | `RATE_LIMIT_GENERATE` | `10/minute` | slowapi/limits syntax; limit for `POST /generate/` |
 | `RATE_LIMIT_REFINE` | `15/minute` | slowapi/limits syntax; limit for `POST /features/{id}/refine` |
+| `TRUST_X_FORWARDED_FOR` | `false` | Honor `X-Forwarded-For` for rate-limit keying. Enable only behind a trusted, header-overwriting reverse proxy; the Next proxy never forwards it. The backend also runs uvicorn with `--no-proxy-headers` so this setting is the only XFF trust decision |
 
 ### Frontend (`frontend/.env.local`)
 
@@ -158,6 +159,7 @@ qa-ai-assistant/
 │   ├── exceptions.py        # Custom exception hierarchy
 │   ├── logging_config.py    # Structured logging + RequestIdMiddleware
 │   ├── auth.py              # X-API-Key verification dependencies
+│   ├── rate_limit.py        # slowapi limiter + verified-identity client keying
 │   ├── seed.py              # Default template seeding on startup
 │   ├── Dockerfile           # Backend image (non-root appuser, HEALTHCHECK)
 │   ├── requirements.txt
