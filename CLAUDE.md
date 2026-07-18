@@ -304,13 +304,18 @@ Feature (raw_requirements)
 **The authoritative issue tracker is `fable-review.md`** (repo root) — a full-codebase
 review with per-item ✅ RESOLVED / ⚠️ DEFERRED status. Start there before picking up
 remediation work. As of 2026-07-04: **all High (H1–H13), all Medium (M1–M26), and all
-Low findings (L1–L30, including L19) are fixed.** L19 was resolved by regenerating
-`api-types.ts` with `defaultNonNullable: false` and dropping the intersection patches.
-See the "Handoff — remaining work" section at the top of that file for what remains.
+Low findings (L1–L30, including L19) are fixed.** As of **2026-07-18**, the second-pass
+four-way review is also fully remediated — see the "2026-07-18 second-pass review"
+section at the bottom of `fable-review.md` and the completed plan at
+`.claude/docs/plans/2026-07-18-review-remediation.md` (all boxes ticked; deployed,
+smoke-tested live, and Playwright-verified on :3010).
 
-**Still open (one structural suggestion — captured in
-`.claude/docs/plans/2026-07-04-remaining-remediation.md`):**
+**Still open (one structural suggestion):**
 - No backend test suite (`backend/tests/` doesn't exist) — suggested improvement #1 (declined for now).
+
+**Deliberate deferrals from the 2026-07-18 pass:** template column-length migration
+(caps enforced in API schemas; PG metadata drift accepted) and the :3010 proxy auth
+posture (network-layer control by design — see the Security note in the Docker section).
 
 **Recently resolved (no longer issues):** debug logging artifacts; frontend port 8001;
 the Edit-button placeholder; the feature-delete 500 (H1); `force_regenerate` destroying

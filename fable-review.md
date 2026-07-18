@@ -205,3 +205,90 @@ No `docker-compose.yml` / `docker-compose.dev.yml` exists in the repo or its git
 - SQLite persistence in the deployed compose is correct (`sqlite:////data/qa_craft.db` on a `/srv/dakis/data` bind mount); `AUTO_MIGRATE` works in-container (alembic.ini copied; `env.py:31` overrides the URL from settings).
 - Enum storage is consistent between SQLModel and the migration (`'DRAFT'` names, verified empirically).
 - Three of CLAUDE.md's "RESOLVED" claims are genuinely resolved in code: debug-logging removal, the `api.ts` port default, and the test-case Edit dialog.
+
+---
+
+## 2026-07-18 second-pass review — all findings remediated
+
+**Scope:** four-way re-review (backend correctness, frontend, security, infra/docs) after the
+2026-07-02 remediation. Plan: `.claude/docs/plans/2026-07-18-review-remediation.md` (all
+checkboxes ticked). Merged to `main` as branches `fix/review-2026-07-18-{a,b,c,d}` plus two B4
+follow-ups; deployed compose commit in `/srv/dakis` (`de10ddc`). Verified via the live smoke
+matrix + headless Playwright against the redeployed :8010/:3010 stack.
+
+### High
+- ✅ **B1 — stranded features could never generate.** The detail-page button is now an enabled
+  "Generate Test Cases" (no confirm, `force_regenerate=false`) when `generation_count == 0`, and
+  the old confirm-dialog Regenerate when `> 0`. Verified live: fresh feature → 10 drafts from the
+  detail page, `generation_count` 0→1.
+
+### Medium
+- ✅ **A1 — refine ignored the selected template.** `refine_test_suite` now prepends the capped
+  template to a module-level `REFINE_SYSTEM_PROMPT` (all providers + mock). Verified: prompt
+  capture in dev, live refine with template → 200 (4 edge cases), bogus template → 404.
+- ✅ **A2 — `POST /test-cases/` with unknown `feature_id` 500'd.** Now a clean 404; the endpoint
+  also forces `is_manual=True` server-side (manual-entry provenance not spoofable). Verified live.
+- ✅ **A4 — rate-limit identity was mintable.** `_client_key` only keys on `X-API-Key` after a
+  constant-time match against the configured key; `X-Forwarded-For` is honored only behind the new
+  `TRUST_X_FORWARDED_FOR` (default false); the Next proxy no longer forwards client XFF; and
+  uvicorn now runs `--no-proxy-headers` (its default XFF trust from 127.0.0.1 would have bypassed
+  the app-level gate — found and closed during A4 verification). Verified live: 12-burst with
+  rotating XFF + fake keys → 10×404 then 2×429.
+- ✅ **B2 — error/loading truthfulness.** Detail page: skeleton / error-card-with-Retry / true
+  empty state; dashboard + list pages gate empty-state CTAs and stat tiles on `!error`;
+  `?status=` param validated instead of blind-cast. Verified live with the backend stopped
+  (error banner + "—" tiles, no fake "No features yet") and with `?status=bogus` (full list, no 422).
+- ✅ **B3 — dashboard "Recent Features" showed the oldest.** Now sorted `created_at` desc.
+  Verified live.
+
+### Low / improvements (batch)
+- ✅ **A3** — templates pagination bounds (`limit` 1–200, `skip ≥ 0`); `get_by_feature` ordered by
+  id (stable export/UI order on PG); `TemplateUpdate` length caps restored; link `notes ≤ 1000`;
+  Feature/TestCase create+update schema caps (title 300/500, description 5000,
+  raw_requirements 20000, expected_result 5000, steps ≤ 50 × 2000); anthropic validation call
+  `max_retries=2`. All curl-verified (422s where expected, normal flows intact).
+- ✅ **A5** — force-regenerate now uses the same compare-and-swap claim as initial generation
+  (`claim_generation(feature_id, observed_count)`); concurrent force requests can't double-insert
+  a suite or lose a counter update.
+- ✅ **A6** — link-repo duplicate handling uses a SAVEPOINT (`begin_nested`) instead of
+  `session.rollback()`, so a duplicate-link 409 no longer discards the whole request UoW.
+  Verified live: 201 → dup 409, inverse link intact.
+- ✅ **B4** — delete flow: all five `delete*` API methods route through `handleResponse` (real
+  backend `detail` in the toast, 204-safe); the proxy returns
+  `502 {"detail":"Backend unreachable"}` when the backend is down (verified live); the
+  delete-a-feature 404-refetch race took **two follow-ups** to fully kill: (1) the list invalidate
+  needed `exact: true` (`['features']` prefix-matched the mounted detail subtree), then (2) the
+  post-`router.push` `removeQueries` had to go entirely — App Router `push()` returns before
+  unmount, so removing an observed query re-triggered fetches; disposal is now left to TanStack GC.
+- ✅ **B5** — SearchInput no longer reverts in-flight keystrokes; LinkSelectorDialog has a
+  `DialogDescription`; dead duplicate cache writes removed from the detail page; "None (default
+  prompt)" template option; mobile ScrollArea `h-[calc(100vh-3.5rem)] md:h-screen` (inner scroll
+  region now fits the visible area exactly — verified at 390×844; a pre-existing cosmetic 56px
+  outer scroll from `main`'s `min-h-screen` under the sticky header remains, out of scope);
+  `featureApi/templateApi.list()` request `limit=200` explicitly.
+- ✅ **B6** — EditFeatureDialog gained the "Proceed anyway" validation bypass; regenerate dialog
+  gained template picker + `target_count` (3–30); RefineActionBar gained `max_new_cases` (1–15);
+  mutations with inline error rendering set `meta.suppressGlobalToast` so failures aren't
+  double-surfaced.
+- ✅ **C (infra)** — `ts-node` pinned in devDependencies (was an unpinned runtime `npx` download);
+  backend Dockerfile uses `COPY --chown` (no duplicate full-tree chown layer); `.gitignore`
+  ignores `*.png` (headless-Playwright screenshots); deployed compose: web `depends_on` is now
+  health-gated on the api service (observed working during redeploy) + comment documenting the
+  `API_KEY` pairing requirement.
+- ✅ **D (docs)** — CLAUDE.md (accept/reject are POST, `claude-haiku-4-5`, `DATABASE_URL` absolute
+  default, :3010 security posture note), api-reference.md (201 creates, bulk-status returns
+  `TestCaseRead[]`, 400/409 link split, 429s, new 404 + length caps), current-state.md (delete UI
+  shipped), architecture.md (real migration chain incl. the three 2026-07-02 revisions), README
+  (Node 20.9+, TanStack Query, full endpoint list).
+
+### Deliberate deferrals (decided at planning, unchanged)
+1. **Template column-length migration** — `Template.name/system_instructions` caps are enforced in
+   the API schemas; the PG column metadata drift (no matching VARCHAR lengths) is accepted. Write a
+   migration only if/when PG becomes the live backend.
+2. **Proxy auth posture** — :3010 remains unauthenticated-write-by-design (proxy injects the key);
+   the gate is network-layer (ufw/Tailscale). Documented in CLAUDE.md; no app-level auth built.
+3. **Backend test suite** (structural #1) — still declined; remains the sole open structural item.
+
+**Environment note (unchanged from 2026-07-02):** the deployed `LLM_PROVIDER=openrouter` free
+model still 429s/fails structured output upstream at times; the smoke matrix's LLM legs were run
+in mock mode (config restored to openrouter afterward).
