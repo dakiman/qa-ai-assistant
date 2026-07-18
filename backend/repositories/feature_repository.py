@@ -45,24 +45,36 @@ class FeatureRepository(BaseRepository[Feature]):
         self.session.refresh(feature)
         return feature
 
-    def claim_initial_generation(self, feature_id: int) -> bool:
-        """Atomically claim the first generation for a feature.
+    def claim_generation(self, feature_id: int, observed_count: int) -> bool:
+        """Atomically bump generation_count iff it still equals observed_count.
 
-        Runs ``UPDATE feature SET generation_count = 1 WHERE id = ? AND
-        generation_count = 0`` and reports whether a row was affected. Two
-        concurrent (or double-clicked) initial-generate requests both pass the
-        earlier ``generation_count > 0`` pre-check, but only one wins this
-        conditional update — the loser gets rowcount 0 and can be rejected,
-        preventing a duplicate suite. Does not commit; the caller commits the
-        whole generate transaction once.
+        Runs ``UPDATE feature SET generation_count = observed_count + 1 WHERE
+        id = ? AND generation_count = observed_count`` and reports whether a
+        row was affected. This is the compare-and-swap primitive behind both
+        the initial 0->1 claim and the force_regenerate claim (any N -> N+1):
+        two concurrent requests that both observed the same count can't both
+        win — the loser's UPDATE affects zero rows and must be treated as a
+        conflict rather than silently double-inserting a second suite and
+        stomping the counter. Does not commit; the caller commits the whole
+        generate transaction once.
         """
         result = self.session.execute(
             update(Feature)
-            .where(Feature.id == feature_id, Feature.generation_count == 0)
-            .values(generation_count=1)
+            .where(Feature.id == feature_id, Feature.generation_count == observed_count)
+            .values(generation_count=observed_count + 1)
             .execution_options(synchronize_session=False)
         )
         return result.rowcount == 1
+
+    def claim_initial_generation(self, feature_id: int) -> bool:
+        """Atomically claim the first generation for a feature (0 -> 1).
+
+        Two concurrent (or double-clicked) initial-generate requests both pass
+        the earlier ``generation_count > 0`` pre-check, but only one wins this
+        conditional update — the loser gets rowcount 0 and can be rejected,
+        preventing a duplicate suite.
+        """
+        return self.claim_generation(feature_id, observed_count=0)
 
     def increment_generation_count(self, feature: Feature, commit: bool = True) -> Feature:
         """Increment the generation counter.
