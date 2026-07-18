@@ -179,7 +179,18 @@ async function handleResponse<T>(response: Response): Promise<T> {
     throw new APIError(response.status, message);
   }
 
-  return response.json();
+  // 204 No Content (and any other empty body, e.g. a HEAD-like DELETE) has
+  // nothing to parse — calling .json() on it throws. Guard so the five
+  // delete* callers can route through this helper and get the backend's real
+  // error `detail` on failure instead of a hardcoded message (B4).
+  if (response.status === 204) {
+    return undefined as T;
+  }
+  const text = await response.text();
+  if (!text) {
+    return undefined as T;
+  }
+  return JSON.parse(text) as T;
 }
 
 // ============== Feature API ==============
@@ -222,9 +233,7 @@ export const featureApi = {
       method: 'DELETE',
       headers: getHeaders(),
     });
-    if (!response.ok) {
-      throw new APIError(response.status, 'Failed to delete feature');
-    }
+    return handleResponse<void>(response);
   },
 
   async export(
@@ -315,9 +324,7 @@ export const templateApi = {
       method: 'DELETE',
       headers: getHeaders(),
     });
-    if (!response.ok) {
-      throw new APIError(response.status, 'Failed to delete template');
-    }
+    return handleResponse<void>(response);
   },
 };
 
@@ -397,9 +404,7 @@ export const testCaseApi = {
       method: 'DELETE',
       headers: getHeaders(),
     });
-    if (!response.ok) {
-      throw new APIError(response.status, 'Failed to delete test case');
-    }
+    return handleResponse<void>(response);
   },
 
   async accept(id: number): Promise<TestCase> {
@@ -473,9 +478,7 @@ export const linksApi = {
       method: 'DELETE',
       headers: getHeaders(),
     });
-    if (!response.ok) {
-      throw new APIError(response.status, 'Failed to delete feature link');
-    }
+    return handleResponse<void>(response);
   },
 
   /**
@@ -498,8 +501,6 @@ export const linksApi = {
       method: 'DELETE',
       headers: getHeaders(),
     });
-    if (!response.ok) {
-      throw new APIError(response.status, 'Failed to delete test case link');
-    }
+    return handleResponse<void>(response);
   },
 };

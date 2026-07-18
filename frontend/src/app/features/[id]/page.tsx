@@ -55,6 +55,9 @@ export default function FeatureDetailPage() {
     try {
       await deleteFeatureMutation.mutateAsync(featureId);
       router.push('/features');
+      // Remove the detail cache only after navigating away — this page is no
+      // longer observing it, so there's no refetch-a-404 flash (B4).
+      queryClient.removeQueries({ queryKey: queryKeys.features.detail(featureId) });
     } catch (err) {
       // Global toast surfaces the failure.
       console.error('Failed to delete feature:', err);

@@ -224,8 +224,13 @@ export function useDeleteFeature() {
 
   return useMutation({
     mutationFn: (id: number) => featureApi.delete(id),
-    onSuccess: (_, deletedId) => {
-      queryClient.removeQueries({ queryKey: queryKeys.features.detail(deletedId) });
+    onSuccess: () => {
+      // Don't removeQueries the detail cache here — the detail page is still the
+      // actively observed component at this point (navigation hasn't happened
+      // yet), so ripping its cache out from under it triggers a refetch of a
+      // feature that no longer exists (404) and flashes an error card before the
+      // route change lands. The page itself removes the detail query after
+      // router.push (B4).
       queryClient.invalidateQueries({ queryKey: queryKeys.features.all });
     },
   });
