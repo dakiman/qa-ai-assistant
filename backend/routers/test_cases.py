@@ -13,6 +13,7 @@ from models import (
     TestCaseStatus,
     BulkStatusUpdate,
 )
+from repositories.feature_repository import FeatureRepository, get_feature_repository
 from repositories.test_case_repository import TestCaseRepository, get_test_case_repository
 
 router = APIRouter(prefix="/test-cases", tags=["Test Cases"])
@@ -20,11 +21,22 @@ router = APIRouter(prefix="/test-cases", tags=["Test Cases"])
 
 @router.post("/", response_model=TestCaseRead, status_code=status.HTTP_201_CREATED)
 def create_test_case(
-    test_case: TestCaseCreate, 
+    test_case: TestCaseCreate,
     repo: TestCaseRepository = Depends(get_test_case_repository),
+    feature_repo: FeatureRepository = Depends(get_feature_repository),
     _: str = Depends(verify_api_key)
 ) -> TestCaseRead:
     """Create a new test case (for manual entry)."""
+    feature = feature_repo.get(test_case.feature_id)
+    if not feature:
+        raise ResourceNotFoundError("Feature", test_case.feature_id)
+
+    # This endpoint is the manual-entry path — the only client (Add Test Case
+    # dialog) always means "a human wrote this," so force is_manual=True
+    # server-side rather than trusting the client-supplied value (workflow
+    # integrity: manual/AI-generated provenance must not be spoofable).
+    test_case.is_manual = True
+
     db_test_case = repo.create_from_schema(test_case)
     return TestCaseRead.from_orm_model(db_test_case)
 
