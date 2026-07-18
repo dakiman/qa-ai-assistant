@@ -45,8 +45,9 @@ Create a feature. Validates requirements through two-stage validation before sav
   "skip_llm_validation": false
 }
 ```
+Length caps: `title` ≤300, `description` ≤5000, `raw_requirements` ≤20000 chars.
 
-**Response 200:** FeatureRead
+**Response 201:** FeatureRead
 **Response 422:** Validation failed
 ```json
 {
@@ -132,8 +133,10 @@ Create a manual test case.
   "refinement_notes": null
 }
 ```
+Length caps: `title` ≤500, `expected_result` ≤5000, `steps` ≤50 items × 2000 chars each.
 
-**Response 200:** TestCaseRead
+**Response 201:** TestCaseRead
+**Response 404:** `feature_id` does not reference an existing feature
 
 ---
 
@@ -198,7 +201,7 @@ Update status for multiple test cases at once.
 }
 ```
 
-**Response 200:** `{ "updated": 3 }`
+**Response 200:** `TestCaseRead[]` — the full updated test cases, not a count
 
 ---
 
@@ -223,12 +226,13 @@ Update status for multiple test cases at once.
 ## Templates
 
 ### `GET /templates/`
-**Auth:** optional | **Response 200:** `TemplateRead[]`
+**Auth:** optional | **Query params:** `skip=0`, `limit=100` (1–200) | **Response 200:** `TemplateRead[]`
 
 ### `POST /templates/`
 **Auth:** required
 **Body:** `{ "name": "API Testing", "system_instructions": "You are a QA engineer..." }`
-**Response 200:** TemplateRead | **409** if name already exists
+Length caps: `name` ≤200, `system_instructions` ≤10000 chars.
+**Response 201:** TemplateRead | **409** if name already exists
 
 ### `GET /templates/{template_id}`
 **Auth:** optional | **Response 200:** TemplateRead | **404**
@@ -285,6 +289,7 @@ Generate test cases from requirements using AI.
 
 **Response 409:** Test cases already generated (set `force_regenerate=true` to replace drafts)
 **Response 422:** Requirements validation failed (see POST /features/ above)
+**Response 429:** Rate limit exceeded (`RATE_LIMIT_GENERATE`, default `10/minute`)
 **Response 503:** LLM service unavailable
 
 ---
@@ -346,6 +351,7 @@ Analyze the accepted test suite and generate gap-filling edge cases.
 | `edge_cases_added` | Number of new edge cases added in this round |
 | `refinement_count` | Feature's cumulative refinement count (incremented each call) |
 
+**Response 429:** Rate limit exceeded (`RATE_LIMIT_REFINE`, default `15/minute`)
 **Response 503:** LLM service unavailable
 
 ---
@@ -417,12 +423,14 @@ Create a bidirectional feature link. Automatically creates the inverse relations
   "notes": "This feature requires OAuth to be implemented first"
 }
 ```
+Length cap: `notes` ≤1000 chars.
 
 **link_type values:** `relates_to`, `depends_on`, `blocks`, `parent_of`, `child_of`
 
-**Response 200:** `FeatureLinkRead`
-**Response 400:** Self-link attempt or duplicate link
+**Response 201:** `FeatureLinkRead`
+**Response 400:** Self-link attempt (source == target)
 **Response 404:** Target feature not found
+**Response 409:** Link between these two features already exists
 
 ---
 
@@ -444,9 +452,12 @@ Reference a test case from another feature.
   "notes": "Reuse this scenario for regression"
 }
 ```
+Length cap: `notes` ≤1000 chars.
 
-**Response 400:** Test case belongs to this feature (can't self-reference) or duplicate
-**Response 200:** `TestCaseLinkRead`
+**Response 201:** `TestCaseLinkRead`
+**Response 400:** Test case belongs to this feature (can't self-reference)
+**Response 404:** Test case not found
+**Response 409:** Link to this test case already exists
 
 ---
 

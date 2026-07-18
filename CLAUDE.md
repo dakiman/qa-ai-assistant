@@ -69,6 +69,13 @@ deploy target for browser-testing UI changes.
 | `qa-ai-assistant-api` | `qa-ai-assistant-api` | Backend (baked image, `AUTO_MIGRATE=true`, SQLite on a `/srv/dakis/data` bind mount) | **8010** → 8000 |
 | `qa-ai-assistant-web` | `qa-ai-assistant-web` | Frontend (baked image; proxies to the api service via `BACKEND_URL`) | **3010** → 3000 |
 
+**Security note:** `:3010` provides unauthenticated write access by design — the
+Next.js proxy (`src/app/api/v1/[...path]/route.ts`) injects `X-API-Key`
+server-side for every request it forwards, so anyone who can reach the frontend
+port can perform writes without ever supplying a key. Access control for this
+app is network-layer, not application-layer (ufw / Tailscale), same as the
+other LAN-only services on this host.
+
 ### Ports cheat sheet
 
 - **Tailscale / docker prod**: frontend `:3010`, backend `:8010` — use these for browser tests on the server.
@@ -115,7 +122,7 @@ See `backend/.env.example` for a copy-paste template.
 | `OPENAI_API_KEY` | — | Required if `LLM_PROVIDER=openai` |
 | `ANTHROPIC_API_KEY` | — | Required if `LLM_PROVIDER=anthropic` |
 | `OPENROUTER_API_KEY` | — | Required if `LLM_PROVIDER=openrouter` |
-| `DATABASE_URL` | `sqlite:///./qa_craft.db` | SQLite for dev, PostgreSQL for prod (needs `psycopg2-binary`) |
+| `DATABASE_URL` | `sqlite:///<backend-dir>/qa_craft.db` | Default resolves to an absolute path anchored to `backend/config.py`'s directory (not the CWD), so `qa_craft.db` lands next to `config.py` regardless of where uvicorn is launched from. SQLite for dev, PostgreSQL for prod (needs `psycopg2-binary`) |
 | `ENVIRONMENT` | `development` | `development`, `staging`, `production` |
 | `API_KEY` | — | Optional; if set, all writes require `X-API-Key` header (the frontend proxy injects it — must match) |
 | `REQUIRE_AUTH_FOR_READS` | `false` | If `true`, read endpoints also require auth |
@@ -241,7 +248,7 @@ Feature (raw_requirements)
         ├─ target_count controls how many cases (default 10, range 3-30)
         ├─ Returns 409 if already generated (use force_regenerate=true to replace drafts)
         └─ Increments feature.generation_count
-    → PATCH /test-cases/{id}/accept or /reject
+    → POST /test-cases/{id}/accept or /reject
     → POST /api/v1/features/{id}/refine  → new TestCase[] (is_edge_case=True)
         ├─ max_new_cases controls limit (default 5, range 1-15)
         ├─ Increments feature.refinement_count
@@ -261,7 +268,7 @@ Feature (raw_requirements)
 
 4. **Mock mode** — `LLM_PROVIDER=mock` generates realistic keyword-aware test cases with zero API calls. The entire UI workflow is testable without an LLM key.
 
-5. **Two-stage validation** — Requirements are validated before hitting the LLM: (1) rule-based (length, word count, alpha ratio, code detection), then (2) LLM semantic check using a cheap fast model (gpt-4o-mini or claude-3-haiku).
+5. **Two-stage validation** — Requirements are validated before hitting the LLM: (1) rule-based (length, word count, alpha ratio, code detection), then (2) LLM semantic check using a cheap fast model (gpt-4o-mini or claude-haiku-4-5).
 
 6. **Request ID tracing** — Every request gets a UUID injected via `RequestIdMiddleware` and propagated through all log lines and the `X-Request-ID` response header.
 

@@ -8,13 +8,13 @@ QA-Craft is a specialized tool for QA engineers to bridge the gap between raw re
 - **Frontend:** Next.js (App Router), Tailwind CSS, shadcn/ui
 - **Database:** SQLite (for POC) or PostgreSQL (Production) using SQLModel
 - **AI Integration:** OpenAI/Anthropic via the `instructor` library (for strict Pydantic validation)
-- **State Management:** React Context or TanStack Query
+- **State Management:** TanStack Query
 
 ## 3. Quick Start
 
 ### Prerequisites
 - Python 3.10+
-- Node.js 18+
+- Node.js 20.9+ (required by Next.js 16)
 - npm
 
 ### Backend Setup
@@ -134,6 +134,17 @@ natively as shown above.
 - `GET /api/v1/features/{id}` - Get a feature
 - `PATCH /api/v1/features/{id}` - Update a feature
 - `DELETE /api/v1/features/{id}` - Delete a feature
+- `GET /api/v1/features/{id}/stats` - Get test case statistics for a feature
+
+### Test Cases
+- `POST /api/v1/test-cases/` - Create a manual test case
+- `GET /api/v1/test-cases/{id}` - Get a test case
+- `PATCH /api/v1/test-cases/{id}` - Update a test case
+- `DELETE /api/v1/test-cases/{id}` - Delete a test case
+- `POST /api/v1/test-cases/{id}/accept` - Accept a test case
+- `POST /api/v1/test-cases/{id}/reject` - Reject a test case
+- `POST /api/v1/test-cases/{id}/reset` - Reset a test case to draft
+- `POST /api/v1/test-cases/bulk-status` - Update status for multiple test cases at once
 
 ### Templates
 - `GET /api/v1/templates/` - List all templates
@@ -145,6 +156,19 @@ natively as shown above.
 ### Generation
 - `POST /api/v1/generate/` - Generate test cases for a feature
 - `GET /api/v1/generate/feature/{id}/test-cases` - Get test cases for a feature
+
+### Refinement
+- `POST /api/v1/features/{id}/refine` - Analyze accepted cases and generate gap-filling edge cases
+
+### Export
+- `GET /api/v1/features/{id}/export` - Export a feature's test cases as JSON or CSV
+
+### Links
+- `GET /api/v1/features/{id}/links` - Get all links for a feature
+- `POST /api/v1/features/{id}/links/feature` - Create a feature-to-feature link
+- `DELETE /api/v1/features/{id}/links/feature/{link_id}` - Delete a feature-to-feature link
+- `POST /api/v1/features/{id}/links/test-case` - Link a feature to another feature's test case
+- `DELETE /api/v1/features/{id}/links/test-case/{link_id}` - Delete a feature-to-test-case link
 
 ## 6. Implementation Milestones
 
