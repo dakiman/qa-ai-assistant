@@ -70,9 +70,19 @@ export default function FeatureDetailPage() {
     try {
       await deleteFeatureMutation.mutateAsync(featureId);
       router.push('/features');
-      // Remove the detail cache only after navigating away — this page is no
-      // longer observing it, so there's no refetch-a-404 flash (B4).
-      queryClient.removeQueries({ queryKey: queryKeys.features.detail(featureId) });
+      // Deliberately NOT calling queryClient.removeQueries() here. router.push()
+      // returns before navigation commits/unmounts this page, so this component
+      // (and its detail/testCases observers under the ['features', id] prefix)
+      // is still actively mounted at this point — removing their query would
+      // trigger an immediate refetch-a-404 by the still-mounted observers, the
+      // exact race B4 was meant to kill (it resurfaced here, from this cleanup
+      // itself, after the mutation hook's own invalidate was fixed to be
+      // list-scoped). Once navigation actually unmounts the page, these queries
+      // go inactive and TanStack garbage-collects them after gcTime on its own
+      // — no manual removal needed. A stale cache entry for a deleted feature
+      // in the meantime is harmless: revisiting the URL just refetches, gets a
+      // 404, and shows the error card, which is correct behavior anyway (B4
+      // follow-up 2).
     } catch (err) {
       // Global toast surfaces the failure.
       console.error('Failed to delete feature:', err);
