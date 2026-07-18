@@ -22,10 +22,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { ChevronLeft, Pencil, Check, Plus, ClipboardCheck, RefreshCw, Loader2, Trash2 } from 'lucide-react';
+import { ChevronLeft, Pencil, Check, Plus, ClipboardCheck, RefreshCw, Loader2, Trash2, AlertTriangle } from 'lucide-react';
 import { useFeature, useFeatureTestCases, useGenerateTestCases, useDeleteFeature, queryKeys } from '@/lib/queries';
 import { useQueryClient } from '@tanstack/react-query';
 import type { TestCase, RefinementResponse, TestCaseFilters as Filters, TestCaseStatus } from '@/lib/api';
+
+// Only these are real test case statuses — a bogus `?status=` param used to be
+// cast blindly, 422 on the backend, and masquerade as an empty result (B2).
+const VALID_TEST_CASE_STATUSES: readonly TestCaseStatus[] = ['draft', 'accepted', 'rejected'];
+
+function parseStatusParam(raw: string | null): TestCaseStatus | null {
+  return raw && (VALID_TEST_CASE_STATUSES as readonly string[]).includes(raw)
+    ? (raw as TestCaseStatus)
+    : null;
+}
 
 export default function FeatureDetailPage() {
   const params = useParams();
@@ -53,7 +63,7 @@ export default function FeatureDetailPage() {
 
   // Parse filters from URL
   const filters: Filters = useMemo(() => ({
-    status: (searchParams.get('status') as TestCaseStatus) || null,
+    status: parseStatusParam(searchParams.get('status')),
     is_edge_case: searchParams.get('edge') === 'true' ? true : null,
     is_manual: searchParams.get('manual') === 'true' ? true : null,
     search: searchParams.get('q') || null,
@@ -84,7 +94,12 @@ export default function FeatureDetailPage() {
   // useFeatureDetail) avoids mounting a second, always-on unfiltered query — the
   // unfiltered fetch below is now gated by hasActiveFilters and no longer dead (M20).
   const { data: feature, isLoading: featureLoading, error: featureError } = useFeature(featureId);
-  const { data: filteredTestCases = [] } = useFeatureTestCases(featureId, filters);
+  const {
+    data: filteredTestCases = [],
+    isLoading: testCasesLoading,
+    error: testCasesError,
+    refetch: refetchTestCases,
+  } = useFeatureTestCases(featureId, filters);
 
   // Also fetch unfiltered test cases for stats (only when filters are active;
   // with no filters the filtered query already returns the full set).
@@ -380,7 +395,34 @@ export default function FeatureDetailPage() {
           </div>
         )}
 
-        {testCases.length === 0 && !hasActiveFilters ? (
+        {testCasesLoading ? (
+          <div className="grid gap-4 md:grid-cols-2">
+            {[1, 2, 3, 4].map((i) => (
+              <Card key={i} className="animate-pulse">
+                <CardHeader>
+                  <div className="h-5 w-2/3 bg-muted rounded" />
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="h-4 w-full bg-muted rounded" />
+                  <div className="h-4 w-5/6 bg-muted rounded" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : testCasesError ? (
+          <Card className="border-destructive/50 bg-destructive/10">
+            <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+              <AlertTriangle className="w-10 h-10 text-destructive mb-4" />
+              <p className="text-destructive mb-4">
+                {testCasesError.message || 'Failed to load test cases'}
+              </p>
+              <Button variant="outline" onClick={() => refetchTestCases()}>
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Retry
+              </Button>
+            </CardContent>
+          </Card>
+        ) : testCases.length === 0 && !hasActiveFilters ? (
           <Card className="border-dashed">
             <CardContent className="flex flex-col items-center justify-center py-12">
               <ClipboardCheck className="w-12 h-12 text-muted-foreground mb-4" />
