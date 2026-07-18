@@ -49,7 +49,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       </header>
 
       <main className="md:ml-64 min-h-screen">
-        <ScrollArea className="h-screen">
+        {/* Below the 56px mobile header the viewport is already short by that
+            much; a full h-screen ScrollArea here creates a second, nested
+            scroll container that double-scrolls on mobile (B5). */}
+        <ScrollArea className="h-[calc(100vh-3.5rem)] md:h-screen">
           <div className="p-4 md:p-8">
             {children}
           </div>

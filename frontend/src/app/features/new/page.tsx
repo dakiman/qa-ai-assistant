@@ -33,6 +33,11 @@ import { LinkManager } from '@/components/LinkManager';
 
 type Phase = 'form' | 'linking' | 'generated';
 
+// Radix Select can't use "" as an item value (that's reserved for "no
+// selection" / the placeholder), so an explicit "clear back to default
+// prompt" choice needs its own sentinel (B5).
+export const NO_TEMPLATE_VALUE = '__none__';
+
 export default function NewFeaturePage() {
   const router = useRouter();
   const { data: templates = [] } = useTemplates();
@@ -101,7 +106,10 @@ export default function NewFeaturePage() {
     try {
       const response = await generateTestCasesMutation.mutateAsync({
         feature_id: createdFeatureId,
-        template_id: selectedTemplateId ? parseInt(selectedTemplateId) : undefined,
+        template_id:
+          selectedTemplateId && selectedTemplateId !== NO_TEMPLATE_VALUE
+            ? parseInt(selectedTemplateId)
+            : undefined,
         skip_llm_validation: bypassLlm,
       });
 
@@ -236,6 +244,7 @@ export default function NewFeaturePage() {
                       <SelectValue placeholder="Select a template (optional)" />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value={NO_TEMPLATE_VALUE}>None (default prompt)</SelectItem>
                       {templates.map((template) => (
                         <SelectItem key={template.id} value={template.id.toString()}>
                           {template.name}

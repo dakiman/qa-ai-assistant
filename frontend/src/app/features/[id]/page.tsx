@@ -143,8 +143,9 @@ export default function FeatureDetailPage() {
         feature_id: featureId,
         force_regenerate: true,
       });
-      // Refresh the feature so the generation_count badge reflects the increment.
-      queryClient.invalidateQueries({ queryKey: queryKeys.features.detail(featureId) });
+      // useGenerateTestCases' onSuccess already invalidates both the test cases
+      // and the feature detail (generation_count badge) — no need to duplicate
+      // that here (B5).
       setRegenerateDialogOpen(false);
     } catch (err) {
       console.error('Failed to regenerate test cases:', err);
@@ -166,11 +167,9 @@ export default function FeatureDetailPage() {
   };
 
   const handleRefinementComplete = (response: RefinementResponse) => {
-    // Update the cache with refined test cases
-    queryClient.setQueryData(
-      queryKeys.features.testCases(featureId),
-      response.test_cases
-    );
+    // useRefineTestSuite's onSuccess already writes response.test_cases into the
+    // cache and invalidates the feature detail — this only needs to surface the
+    // success banner (B5).
     setRefinementMessage(response.message);
   };
 

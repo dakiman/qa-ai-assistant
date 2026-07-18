@@ -197,7 +197,10 @@ async function handleResponse<T>(response: Response): Promise<T> {
 
 export const featureApi = {
   async list(): Promise<Feature[]> {
-    const response = await fetch(`${API_BASE_URL}/features/`, {
+    // The backend defaults to limit=100 when unspecified; pass the max
+    // explicitly (200, post-A3) so the list doesn't silently truncate as the
+    // feature count grows. Real pagination is deferred (POC scale) (B5).
+    const response = await fetch(`${API_BASE_URL}/features/?limit=200`, {
       headers: getHeaders(),
     });
     return handleResponse<Feature[]>(response);
@@ -288,7 +291,8 @@ export const healthApi = {
 
 export const templateApi = {
   async list(): Promise<Template[]> {
-    const response = await fetch(`${API_BASE_URL}/templates/`, {
+    // See featureApi.list() — pass the backend's max limit explicitly (B5).
+    const response = await fetch(`${API_BASE_URL}/templates/?limit=200`, {
       headers: getHeaders(),
     });
     return handleResponse<Template[]>(response);
