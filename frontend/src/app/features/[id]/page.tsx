@@ -133,6 +133,20 @@ export default function FeatureDetailPage() {
     }
   };
 
+  // For a feature that has never generated (e.g. the wizard was abandoned after
+  // create-but-before-generate), there's nothing to destroy, so this fires the
+  // mutation directly with no confirm dialog (B1).
+  const handleFirstGenerate = async () => {
+    try {
+      await generateMutation.mutateAsync({
+        feature_id: featureId,
+        force_regenerate: false,
+      });
+    } catch (err) {
+      console.error('Failed to generate test cases:', err);
+    }
+  };
+
   const handleRefinementComplete = (response: RefinementResponse) => {
     // Update the cache with refined test cases
     queryClient.setQueryData(
@@ -218,15 +232,33 @@ export default function FeatureDetailPage() {
         </div>
         <div className="flex items-center gap-3 shrink-0">
           <ExportButton featureId={featureId} />
-          <Button
-            variant="outline"
-            onClick={() => setRegenerateDialogOpen(true)}
-            disabled={(feature.generation_count ?? 0) === 0}
-            title={(feature.generation_count ?? 0) === 0 ? 'No previous generation to regenerate' : undefined}
-          >
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Regenerate
-          </Button>
+          {(feature.generation_count ?? 0) === 0 ? (
+            <Button
+              variant="outline"
+              onClick={handleFirstGenerate}
+              disabled={generateMutation.isPending}
+            >
+              {generateMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Generate Test Cases
+                </>
+              )}
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              onClick={() => setRegenerateDialogOpen(true)}
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Regenerate
+            </Button>
+          )}
           <EditFeatureDialog
             feature={feature}
             trigger={
