@@ -7,6 +7,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { TestCaseCard } from '@/components/TestCaseCard';
 import { AddTestCaseDialog } from '@/components/AddTestCaseDialog';
 import { RefineActionBar } from '@/components/RefineActionBar';
@@ -22,10 +31,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { ChevronLeft, Pencil, Check, Plus, ClipboardCheck, RefreshCw, Loader2, Trash2 } from 'lucide-react';
-import { useFeature, useFeatureTestCases, useGenerateTestCases, useDeleteFeature, queryKeys } from '@/lib/queries';
+import { ChevronLeft, Pencil, Check, Plus, ClipboardCheck, RefreshCw, Loader2, Trash2, AlertTriangle } from 'lucide-react';
+import { useFeature, useFeatureTestCases, useGenerateTestCases, useDeleteFeature, useTemplates, queryKeys } from '@/lib/queries';
 import { useQueryClient } from '@tanstack/react-query';
 import type { TestCase, RefinementResponse, TestCaseFilters as Filters, TestCaseStatus } from '@/lib/api';
+import { NO_TEMPLATE_VALUE } from '@/lib/utils';
+
+const DEFAULT_TARGET_COUNT = 10;
+
+// Only these are real test case statuses — a bogus `?status=` param used to be
+// cast blindly, 422 on the backend, and masquerade as an empty result (B2).
+const VALID_TEST_CASE_STATUSES: readonly TestCaseStatus[] = ['draft', 'accepted', 'rejected'];
+
+function parseStatusParam(raw: string | null): TestCaseStatus | null {
+  return raw && (VALID_TEST_CASE_STATUSES as readonly string[]).includes(raw)
+    ? (raw as TestCaseStatus)
+    : null;
+}
 
 export default function FeatureDetailPage() {
   const params = useParams();
@@ -36,7 +58,10 @@ export default function FeatureDetailPage() {
   
   const [refinementMessage, setRefinementMessage] = useState<string | null>(null);
   const [regenerateDialogOpen, setRegenerateDialogOpen] = useState(false);
+  const [regenerateTemplateId, setRegenerateTemplateId] = useState<string>(NO_TEMPLATE_VALUE);
+  const [regenerateTargetCount, setRegenerateTargetCount] = useState(DEFAULT_TARGET_COUNT);
   const generateMutation = useGenerateTestCases();
+  const { data: templates = [] } = useTemplates();
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const deleteFeatureMutation = useDeleteFeature();
@@ -45,6 +70,9 @@ export default function FeatureDetailPage() {
     try {
       await deleteFeatureMutation.mutateAsync(featureId);
       router.push('/features');
+      // Remove the detail cache only after navigating away — this page is no
+      // longer observing it, so there's no refetch-a-404 flash (B4).
+      queryClient.removeQueries({ queryKey: queryKeys.features.detail(featureId) });
     } catch (err) {
       // Global toast surfaces the failure.
       console.error('Failed to delete feature:', err);
@@ -53,7 +81,7 @@ export default function FeatureDetailPage() {
 
   // Parse filters from URL
   const filters: Filters = useMemo(() => ({
-    status: (searchParams.get('status') as TestCaseStatus) || null,
+    status: parseStatusParam(searchParams.get('status')),
     is_edge_case: searchParams.get('edge') === 'true' ? true : null,
     is_manual: searchParams.get('manual') === 'true' ? true : null,
     search: searchParams.get('q') || null,
@@ -84,7 +112,12 @@ export default function FeatureDetailPage() {
   // useFeatureDetail) avoids mounting a second, always-on unfiltered query — the
   // unfiltered fetch below is now gated by hasActiveFilters and no longer dead (M20).
   const { data: feature, isLoading: featureLoading, error: featureError } = useFeature(featureId);
-  const { data: filteredTestCases = [] } = useFeatureTestCases(featureId, filters);
+  const {
+    data: filteredTestCases = [],
+    isLoading: testCasesLoading,
+    error: testCasesError,
+    refetch: refetchTestCases,
+  } = useFeatureTestCases(featureId, filters);
 
   // Also fetch unfiltered test cases for stats (only when filters are active;
   // with no filters the filtered query already returns the full set).
@@ -124,21 +157,49 @@ export default function FeatureDetailPage() {
       await generateMutation.mutateAsync({
         feature_id: featureId,
         force_regenerate: true,
+        template_id:
+          regenerateTemplateId && regenerateTemplateId !== NO_TEMPLATE_VALUE
+            ? parseInt(regenerateTemplateId)
+            : undefined,
+        target_count: regenerateTargetCount,
       });
-      // Refresh the feature so the generation_count badge reflects the increment.
-      queryClient.invalidateQueries({ queryKey: queryKeys.features.detail(featureId) });
+      // useGenerateTestCases' onSuccess already invalidates both the test cases
+      // and the feature detail (generation_count badge) — no need to duplicate
+      // that here (B5).
       setRegenerateDialogOpen(false);
     } catch (err) {
       console.error('Failed to regenerate test cases:', err);
     }
   };
 
+  // Reset the regenerate dialog's controls each time it opens so a previous
+  // pick doesn't linger silently.
+  const handleRegenerateDialogChange = (nextOpen: boolean) => {
+    if (nextOpen) {
+      setRegenerateTemplateId(NO_TEMPLATE_VALUE);
+      setRegenerateTargetCount(DEFAULT_TARGET_COUNT);
+    }
+    setRegenerateDialogOpen(nextOpen);
+  };
+
+  // For a feature that has never generated (e.g. the wizard was abandoned after
+  // create-but-before-generate), there's nothing to destroy, so this fires the
+  // mutation directly with no confirm dialog (B1).
+  const handleFirstGenerate = async () => {
+    try {
+      await generateMutation.mutateAsync({
+        feature_id: featureId,
+        force_regenerate: false,
+      });
+    } catch (err) {
+      console.error('Failed to generate test cases:', err);
+    }
+  };
+
   const handleRefinementComplete = (response: RefinementResponse) => {
-    // Update the cache with refined test cases
-    queryClient.setQueryData(
-      queryKeys.features.testCases(featureId),
-      response.test_cases
-    );
+    // useRefineTestSuite's onSuccess already writes response.test_cases into the
+    // cache and invalidates the feature detail — this only needs to surface the
+    // success banner (B5).
     setRefinementMessage(response.message);
   };
 
@@ -218,15 +279,33 @@ export default function FeatureDetailPage() {
         </div>
         <div className="flex items-center gap-3 shrink-0">
           <ExportButton featureId={featureId} />
-          <Button
-            variant="outline"
-            onClick={() => setRegenerateDialogOpen(true)}
-            disabled={(feature.generation_count ?? 0) === 0}
-            title={(feature.generation_count ?? 0) === 0 ? 'No previous generation to regenerate' : undefined}
-          >
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Regenerate
-          </Button>
+          {(feature.generation_count ?? 0) === 0 ? (
+            <Button
+              variant="outline"
+              onClick={handleFirstGenerate}
+              disabled={generateMutation.isPending}
+            >
+              {generateMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Generate Test Cases
+                </>
+              )}
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              onClick={() => handleRegenerateDialogChange(true)}
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Regenerate
+            </Button>
+          )}
           <EditFeatureDialog
             feature={feature}
             trigger={
@@ -348,7 +427,34 @@ export default function FeatureDetailPage() {
           </div>
         )}
 
-        {testCases.length === 0 && !hasActiveFilters ? (
+        {testCasesLoading ? (
+          <div className="grid gap-4 md:grid-cols-2">
+            {[1, 2, 3, 4].map((i) => (
+              <Card key={i} className="animate-pulse">
+                <CardHeader>
+                  <div className="h-5 w-2/3 bg-muted rounded" />
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="h-4 w-full bg-muted rounded" />
+                  <div className="h-4 w-5/6 bg-muted rounded" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : testCasesError ? (
+          <Card className="border-destructive/50 bg-destructive/10">
+            <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+              <AlertTriangle className="w-10 h-10 text-destructive mb-4" />
+              <p className="text-destructive mb-4">
+                {testCasesError.message || 'Failed to load test cases'}
+              </p>
+              <Button variant="outline" onClick={() => refetchTestCases()}>
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Retry
+              </Button>
+            </CardContent>
+          </Card>
+        ) : testCases.length === 0 && !hasActiveFilters ? (
           <Card className="border-dashed">
             <CardContent className="flex flex-col items-center justify-center py-12">
               <ClipboardCheck className="w-12 h-12 text-muted-foreground mb-4" />
@@ -397,7 +503,7 @@ export default function FeatureDetailPage() {
       />
 
       {/* Regenerate Confirmation Dialog */}
-      <Dialog open={regenerateDialogOpen} onOpenChange={setRegenerateDialogOpen}>
+      <Dialog open={regenerateDialogOpen} onOpenChange={handleRegenerateDialogChange}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Regenerate test cases?</DialogTitle>
@@ -405,10 +511,47 @@ export default function FeatureDetailPage() {
               This will delete the {stats.draft} existing draft case{stats.draft === 1 ? '' : 's'}. Accepted, rejected, and manual cases are preserved.
             </DialogDescription>
           </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="regenerate-template">Generation Template</Label>
+              <Select
+                value={regenerateTemplateId}
+                onValueChange={setRegenerateTemplateId}
+                disabled={generateMutation.isPending}
+              >
+                <SelectTrigger id="regenerate-template">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_TEMPLATE_VALUE}>None (default prompt)</SelectItem>
+                  {templates.map((template) => (
+                    <SelectItem key={template.id} value={template.id.toString()}>
+                      {template.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="regenerate-target-count">Number of test cases (3–30)</Label>
+              <Input
+                id="regenerate-target-count"
+                type="number"
+                min={3}
+                max={30}
+                value={regenerateTargetCount}
+                onChange={(e) => setRegenerateTargetCount(Number(e.target.value))}
+                disabled={generateMutation.isPending}
+              />
+            </div>
+          </div>
+
           <DialogFooter className="gap-2 sm:gap-0">
             <Button
               variant="outline"
-              onClick={() => setRegenerateDialogOpen(false)}
+              onClick={() => handleRegenerateDialogChange(false)}
               disabled={generateMutation.isPending}
             >
               Cancel
@@ -416,7 +559,11 @@ export default function FeatureDetailPage() {
             <Button
               variant="destructive"
               onClick={handleRegenerate}
-              disabled={generateMutation.isPending}
+              disabled={
+                generateMutation.isPending ||
+                regenerateTargetCount < 3 ||
+                regenerateTargetCount > 30
+              }
             >
               {generateMutation.isPending ? (
                 <>

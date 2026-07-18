@@ -88,7 +88,7 @@ export default function TemplatesPage() {
             </Card>
           ))}
         </div>
-      ) : templates.length === 0 ? (
+      ) : error ? null : templates.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-16">
             <LayoutTemplate className="w-16 h-16 text-muted-foreground mb-4" />

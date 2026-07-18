@@ -36,7 +36,16 @@ async function handler(req: NextRequest) {
     init.body = await req.text();
   }
 
-  const upstream = await fetch(url, init);
+  let upstream: Response;
+  try {
+    upstream = await fetch(url, init);
+  } catch {
+    // The backend is down/unreachable (connection refused, DNS failure, etc.) —
+    // without this, an unhandled rejection here 500s with an opaque Next.js
+    // error page instead of a JSON body the client's handleResponse() can
+    // surface as a real toast message (B4).
+    return NextResponse.json({ detail: 'Backend unreachable' }, { status: 502 });
+  }
 
   // Drop hop-by-hop and length/encoding headers. undici already decompressed the
   // body, so forwarding the upstream (compressed) content-length would truncate

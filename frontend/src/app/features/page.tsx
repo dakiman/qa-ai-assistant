@@ -52,7 +52,7 @@ export default function FeaturesPage() {
             </Card>
           ))}
         </div>
-      ) : features.length === 0 ? (
+      ) : error ? null : features.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-16">
             <Box className="w-16 h-16 text-muted-foreground mb-4" />

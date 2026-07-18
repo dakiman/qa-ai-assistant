@@ -18,10 +18,15 @@ export function QueryProvider({ children }: QueryProviderProps) {
         // console.error-ing it (M17). Components may still show inline errors;
         // this is the safety net so no failure goes unreported.
         mutationCache: new MutationCache({
-          onError: (error) => {
+          onError: (error, _variables, _context, mutation) => {
             // Requirements-validation failures are rendered inline by the
             // create/edit forms with their structured issues — don't duplicate.
             if (error instanceof ValidationAPIError) return;
+            // Mutations that already render their own inline error (e.g.
+            // Add/Edit dialogs, TemplateForm, RefineActionBar) opt out via
+            // `meta: { suppressGlobalToast: true }` so the failure isn't
+            // surfaced twice (B6).
+            if (mutation.meta?.suppressGlobalToast) return;
             toast(
               error instanceof Error ? error.message : 'Something went wrong',
               'error'

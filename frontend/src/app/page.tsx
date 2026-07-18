@@ -48,7 +48,7 @@ export default function Dashboard() {
           <CardHeader className="pb-2">
             <CardDescription>Total Features</CardDescription>
             <CardTitle className="text-4xl font-bold text-primary">
-              {isLoading ? '—' : features.length}
+              {isLoading || error ? '—' : features.length}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -62,7 +62,7 @@ export default function Dashboard() {
           <CardHeader className="pb-2">
             <CardDescription>Templates Available</CardDescription>
             <CardTitle className="text-4xl font-bold text-primary">
-              {isLoading ? '—' : templates.length}
+              {isLoading || error ? '—' : templates.length}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -107,7 +107,7 @@ export default function Dashboard() {
               </Card>
             ))}
           </div>
-        ) : features.length === 0 ? (
+        ) : error ? null : features.length === 0 ? (
           <Card className="border-dashed">
             <CardContent className="flex flex-col items-center justify-center py-12">
               <Box className="w-12 h-12 text-muted-foreground mb-4" />
@@ -119,7 +119,10 @@ export default function Dashboard() {
           </Card>
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
-            {features.slice(0, 4).map((feature) => (
+            {[...features]
+              .sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at))
+              .slice(0, 4)
+              .map((feature) => (
               <Link key={feature.id} href={`/features/${feature.id}`}>
                 <Card className="card-hover cursor-pointer h-full">
                   <CardHeader>

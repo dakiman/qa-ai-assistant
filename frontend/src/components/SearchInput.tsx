@@ -28,8 +28,11 @@ export function SearchInput({
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Sync when the value is changed externally (navigation, "Clear filters").
+  // Skipped while a debounce is pending: the upward onChange for the latest
+  // keystroke hasn't landed yet, so `value` is still stale relative to what
+  // the user just typed — syncing here would revert the input mid-keystroke.
   useEffect(() => {
-    setInternal(value);
+    setInternal((prev) => (timer.current ? prev : value));
   }, [value]);
 
   // Clean up a pending debounce on unmount.
@@ -43,11 +46,15 @@ export function SearchInput({
   const handleChange = (next: string) => {
     setInternal(next);
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => onChange(next), debounceMs);
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      onChange(next);
+    }, debounceMs);
   };
 
   const handleClear = () => {
     if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
     setInternal('');
     onChange('');
   };

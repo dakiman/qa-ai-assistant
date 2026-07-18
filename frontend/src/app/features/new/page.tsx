@@ -30,6 +30,7 @@ import { useTemplates, useCreateFeature, useGenerateTestCases } from '@/lib/quer
 import type { TestCaseDraft } from '@/lib/api';
 import { ValidationAPIError } from '@/lib/api';
 import { LinkManager } from '@/components/LinkManager';
+import { NO_TEMPLATE_VALUE } from '@/lib/utils';
 
 type Phase = 'form' | 'linking' | 'generated';
 
@@ -101,7 +102,10 @@ export default function NewFeaturePage() {
     try {
       const response = await generateTestCasesMutation.mutateAsync({
         feature_id: createdFeatureId,
-        template_id: selectedTemplateId ? parseInt(selectedTemplateId) : undefined,
+        template_id:
+          selectedTemplateId && selectedTemplateId !== NO_TEMPLATE_VALUE
+            ? parseInt(selectedTemplateId)
+            : undefined,
         skip_llm_validation: bypassLlm,
       });
 
@@ -236,6 +240,7 @@ export default function NewFeaturePage() {
                       <SelectValue placeholder="Select a template (optional)" />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value={NO_TEMPLATE_VALUE}>None (default prompt)</SelectItem>
                       {templates.map((template) => (
                         <SelectItem key={template.id} value={template.id.toString()}>
                           {template.name}

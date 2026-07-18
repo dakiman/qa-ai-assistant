@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -146,6 +147,9 @@ export function LinkSelectorDialog({
             <Link2 className="w-5 h-5" />
             Add Link
           </DialogTitle>
+          <DialogDescription>
+            Link this feature to a related feature or reference one of its test cases.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 flex-1 overflow-hidden flex flex-col">
